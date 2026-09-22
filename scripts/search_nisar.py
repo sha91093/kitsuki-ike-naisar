@@ -120,8 +120,14 @@ def result_to_row(result: Any) -> dict[str, Any]:
         or meta.get("concept-id")
         or ""
     )
+    acquisition_id, separator, revision = granule_id.rpartition("_")
+    if not separator or not revision.isdigit():
+        acquisition_id = granule_id
+        revision = ""
     return {
         "granule_id": granule_id,
+        "acquisition_id": acquisition_id,
+        "processing_revision": revision,
         "concept_id": meta.get("concept-id", ""),
         "begin_time": begin,
         "end_time": end,
@@ -173,7 +179,12 @@ def write_outputs(results: list[Any], aoi, output_dir: Path) -> pd.DataFrame:
     rows = [result_to_row(result) for result in results]
     df = pd.DataFrame(rows)
     if not df.empty and "begin_time" in df:
-        df = df.sort_values(["begin_time", "granule_id"]).reset_index(drop=True)
+        # 同じ観測の再処理版（末尾 _001, _002...）は最新版だけを採用する。
+        df = (
+            df.sort_values(["begin_time", "acquisition_id", "processing_revision"])
+            .drop_duplicates(subset=["acquisition_id"], keep="last")
+            .reset_index(drop=True)
+        )
         rows = df.to_dict(orient="records")
 
     df.to_csv(output_dir / "catalog.csv", index=False)

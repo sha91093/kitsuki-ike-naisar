@@ -40,7 +40,21 @@ def test_result_to_row_extracts_frequency_a_metadata():
     row = result_to_row(result)
 
     assert row["granule_id"] == "NISAR_TEST"
+    assert row["acquisition_id"] == "NISAR_TEST"
+    assert row["processing_revision"] == ""
     assert row["orbit_direction"] == "DESCENDING"
     assert row["frequency_a_polarization"] == "HH+HV"
     assert row["frequency_a_bandwidth_mhz"] == "40"
     assert row["download_url"].endswith(".h5")
+
+
+def test_result_to_row_splits_processing_revision():
+    result = FakeResult(
+        meta={},
+        umm={"GranuleUR": "NISAR_ACQUISITION_002"},
+    )
+
+    row = result_to_row(result)
+
+    assert row["acquisition_id"] == "NISAR_ACQUISITION"
+    assert row["processing_revision"] == "002"
