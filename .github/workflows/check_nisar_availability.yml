@@ -1,0 +1,66 @@
+name: NISARデータ利用可能性チェック
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: '検索開始日（YYYY-MM-DD）'
+        required: false
+        default: '2026-06-17'
+        type: string
+      end_date:
+        description: '検索終了日（YYYY-MM-DD）'
+        required: false
+        default: '2026-12-31'
+        type: string
+      buffer_m:
+        description: '池ポリゴン周辺の検索バッファー（m）'
+        required: false
+        default: '100'
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  search:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: 依存ライブラリをインストール
+        run: pip install -r requirements.txt
+
+      - name: NISAR GCOVを検索
+        env:
+          EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
+          EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+          START_DATE: ${{ inputs.start_date }}
+          END_DATE: ${{ inputs.end_date }}
+          BUFFER_M: ${{ inputs.buffer_m }}
+        run: |
+          test -f data/static/ponds.gpkg || {
+            echo 'data/static/ponds.gpkg がありません'
+            exit 1
+          }
+          python scripts/search_nisar.py \
+            --start "$START_DATE" \
+            --end "$END_DATE" \
+            --buffer-m "$BUFFER_M"
+
+      - name: 検索結果をコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/nisar_catalog
+          git diff --staged --quiet || git commit -m "Update NISAR availability catalog"
+          git push
+

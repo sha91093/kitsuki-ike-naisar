@@ -1,0 +1,7 @@
+earthaccess>=0.15.0
+geopandas>=1.0.0
+pandas>=2.0.0
+pyogrio>=0.10.0
+shapely>=2.0.0
+pytest>=8.0.0
+

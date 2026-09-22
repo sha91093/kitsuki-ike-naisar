@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>杵築市 池水面面積モニタリング</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+  <div id="map"></div>
+
+  <div id="sidebar">
+    <div id="sidebar-handle"></div>
+    <div id="sidebar-header">
+      <div id="sidebar-header-top">
+        <div>
+          <h1>杵築市 池水面面積モニタリング</h1>
+          <p>NISAR L-band SAR（降交軌道）による自動観測</p>
+        </div>
+        <button id="sidebar-close" aria-label="閉じる">×</button>
+      </div>
+      <div class="list-btns">
+        <a class="list-btn" href="list.html">📋 一覧・印刷ページ</a>
+        <a class="list-btn" href="rain.html">🌧 降水量参照</a>
+      </div>
+    </div>
+
+    <div id="pond-info">
+      <p id="sidebar-hint">地図上の池をクリックしてください</p>
+    </div>
+
+    <div id="disclaimer">本データはNISAR L-band SARによる推定値です。現地確認の参考としてご利用ください。</div>
+    <div id="updated-at"></div>
+  </div>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

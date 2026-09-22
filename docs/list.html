@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>池水面面積 一覧・印刷 — 杵築市</title>
+
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/style.css" />
+  <link rel="stylesheet" href="assets/list.css" />
+</head>
+<body class="list-page">
+
+<!-- ===== ヘッダー ===== -->
+<header class="list-header no-print">
+  <a class="back-btn" href="index.html">← 地図へ戻る</a>
+  <a class="back-btn" href="rain.html">🌧 降水量参照</a>
+  <div class="list-header-title">
+    <h1>杵築市 池水面面積 一覧</h1>
+    <p id="list-subtitle">読み込み中...</p>
+  </div>
+  <div class="list-actions">
+    <button id="btn-select-all"   class="action-btn secondary">すべて選択</button>
+    <button id="btn-deselect-all" class="action-btn secondary">選択解除</button>
+    <button id="btn-print-selected" class="action-btn primary">選択を印刷</button>
+    <button id="btn-print-all"    class="action-btn primary">全て印刷</button>
+  </div>
+</header>
+
+<!-- ===== アラートサマリー ===== -->
+<div id="alert-bar" class="no-print" style="display:none;">
+  <span class="alert-icon">⚠️</span>
+  <span id="alert-text"></span>
+</div>
+
+<!-- ===== 降水量グラフ ===== -->
+<section class="rain-section no-print">
+  <h2 class="section-title">参考：杵築市 月別降水量（年別比較）</h2>
+  <div id="rain-chart" class="rain-chart-wrap"></div>
+  <p class="rain-note">データ出典: Open-Meteo (気象庁観測点付近: 33.42°N 131.62°E)</p>
+</section>
+
+<!-- ===== 池グラフ一覧 ===== -->
+<section class="pond-list-section">
+  <div id="pond-grid">
+    <!-- JS で生成 -->
+    <div id="loading-msg" class="loading-msg">グラフを生成中...</div>
+  </div>
+</section>
+
+<script src="assets/list.js"></script>
+<footer style="text-align:center;padding:8px;font-size:11px;color:#888;background:#f5f5f5;border-top:1px solid #ddd;" class="no-print">
+  本データはNISAR L-band SARによる推定値です。現地確認の参考としてご利用ください。
+</footer>
+</body>
+</html>

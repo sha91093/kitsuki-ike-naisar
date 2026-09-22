@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>降水量参照 — 杵築市</title>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js" charset="utf-8"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Noto Sans JP", sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+    }
+
+    /* ── ヘッダー ── */
+    .page-header {
+      background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%);
+      color: #fff;
+      padding: 16px 28px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      flex-wrap: wrap;
+    }
+    .back-btn {
+      padding: 6px 14px;
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+      text-decoration: none;
+      border-radius: 6px;
+      font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.3);
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+    .back-btn:hover { background: rgba(255,255,255,0.28); }
+    .header-title h1 { font-size: 17px; font-weight: 700; }
+    .header-title p  { font-size: 11px; margin-top: 3px; opacity: 0.8; }
+
+    /* ── コンテンツ ── */
+    .content { max-width: 1200px; margin: 0 auto; padding: 20px 24px 40px; }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .stat-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 14px 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+    }
+    .stat-card .label { font-size: 11px; color: #718096; }
+    .stat-card .value { font-size: 20px; font-weight: 700; color: #1a365d; margin-top: 4px; }
+    .stat-card .sub   { font-size: 11px; color: #a0aec0; margin-top: 2px; }
+
+    .chart-card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      margin-bottom: 16px;
+    }
+    .chart-card h2 {
+      font-size: 13px;
+      font-weight: 700;
+      color: #2d3748;
+      margin-bottom: 10px;
+    }
+    .chart-wrap-tall  { height: 300px; }
+    .chart-wrap-short { height: 220px; }
+
+    .note {
+      font-size: 11px;
+      color: #a0aec0;
+      text-align: right;
+      margin-top: 6px;
+    }
+
+    #loading {
+      text-align: center;
+      padding: 60px;
+      color: #a0aec0;
+      font-size: 14px;
+    }
+    #error-msg {
+      display: none;
+      text-align: center;
+      padding: 40px;
+      color: #e53e3e;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+<header class="page-header">
+  <a class="back-btn" href="list.html">← 一覧へ戻る</a>
+  <div class="header-title">
+    <h1>杵築市 降水量参照</h1>
+    <p>観測地点: 33.42°N / 131.62°E　／　データ出典: Open-Meteo Archive API</p>
+  </div>
+</header>
+
+<div class="content">
+  <div id="loading">降水量データを取得中...</div>
+  <div id="error-msg">降水量データの取得に失敗しました。ネットワーク接続を確認してください。</div>
+
+  <div id="main-content" style="display:none;">
+
+    <!-- 統計チップ -->
+    <div class="stat-row" id="stat-row"></div>
+
+    <!-- ① 月別降水量（年別比較）バーチャート -->
+    <div class="chart-card">
+      <h2>月別降水量（年別比較）</h2>
+      <div class="chart-wrap-tall" id="chart-monthly"></div>
+    </div>
+
+    <!-- ② 年間累計折れ線 -->
+    <div class="chart-card">
+      <h2>年間累計降水量</h2>
+      <div class="chart-wrap-tall" id="chart-cumulative"></div>
+    </div>
+
+    <!-- ③ 日別降水量（年ごとタブ） -->
+    <div class="chart-card">
+      <h2>日別降水量</h2>
+      <div id="tab-bar" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;"></div>
+      <div class="chart-wrap-tall" id="chart-daily"></div>
+    </div>
+
+    <p class="note" id="data-range"></p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const KITSUKI_LAT  = 33.42;
+const KITSUKI_LNG  = 131.62;
+const RAIN_COLORS  = ['#3b82f6','#f97316','#10b981','#a855f7','#ef4444'];
+const MONTH_LABELS = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+
+const today     = new Date();
+const endDate   = today.toISOString().split('T')[0];
+const startYear = today.getFullYear() - 2;
+const startDate = `${startYear}-01-01`;
+
+async function init() {
+  try {
+    const url = `https://archive-api.open-meteo.com/v1/archive`
+      + `?latitude=${KITSUKI_LAT}&longitude=${KITSUKI_LNG}`
+      + `&start_date=${startDate}&end_date=${endDate}`
+      + `&daily=precipitation_sum&timezone=Asia%2FTokyo`;
+
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const json = await r.json();
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('data-range').textContent =
+      `取得期間: ${startDate} 〜 ${endDate}`;
+
+    const { daily: byYear, raw } = processRainfall(json);
+    renderStats(byYear);
+    renderMonthly(byYear);
+    renderCumulative(byYear);
+    renderDailyTabs(raw);
+
+    document.getElementById('main-content').style.display = 'block';
+  } catch (e) {
+    console.error(e);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('error-msg').style.display = 'block';
+  }
+}
+
+// 日別データを月別合計 + 日別に整理
+function processRainfall(json) {
+  const monthly = {};  // year → [12 monthly totals]
+  const daily   = {};  // year → [{date, val}]
+
+  (json.daily?.time || []).forEach((dateStr, i) => {
+    const val = json.daily.precipitation_sum[i] ?? 0;
+    const [y, m] = dateStr.split('-');
+    const year  = parseInt(y, 10);
+    const month = parseInt(m, 10);
+
+    if (!monthly[year]) monthly[year] = Array(12).fill(0);
+    monthly[year][month - 1] += val;
+
+    if (!daily[year]) daily[year] = [];
+    daily[year].push({ date: dateStr, val: Math.round(val * 10) / 10 });
+  });
+
+  return { daily: monthly, raw: daily };
+}
+
+// 統計カード
+function renderStats(byYear) {
+  const years = Object.keys(byYear).map(Number).sort();
+  const cards = [];
+
+  years.forEach(year => {
+    const total = byYear[year].reduce((a, b) => a + b, 0);
+    const maxMonth = byYear[year].indexOf(Math.max(...byYear[year]));
+    cards.push({
+      label: `${year}年 年間合計`,
+      value: `${Math.round(total).toLocaleString()} mm`,
+      sub:   `最多: ${MONTH_LABELS[maxMonth]}（${Math.round(byYear[year][maxMonth])} mm）`,
+    });
+  });
+
+  document.getElementById('stat-row').innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}</div>
+      <div class="sub">${c.sub}</div>
+    </div>
+  `).join('');
+}
+
+// ① 月別バーチャート
+function renderMonthly(byYear) {
+  const years = Object.keys(byYear).map(Number).sort();
+  const traces = years.map((year, i) => ({
+    x: MONTH_LABELS,
+    y: byYear[year].map(v => Math.round(v)),
+    name: `${year}年`,
+    type: 'bar',
+    marker: { color: RAIN_COLORS[i % RAIN_COLORS.length], opacity: 0.85 },
+    hovertemplate: `<b>${year}年 %{x}</b><br>降水量: <b>%{y} mm</b><extra></extra>`,
+  }));
+
+  Plotly.newPlot('chart-monthly', traces, baseLayout({
+    barmode: 'group',
+    yaxis: { title: { text: '月間降水量 (mm)', standoff: 10 }, gridcolor: '#edf2f7', rangemode: 'tozero' },
+  }), { responsive: true, displayModeBar: false });
+}
+
+// ② 累計折れ線
+function renderCumulative(byYear) {
+  const years = Object.keys(byYear).map(Number).sort();
+  const traces = years.map((year, i) => {
+    let cum = 0;
+    const y = byYear[year].map(v => { cum += v; return Math.round(cum); });
+    return {
+      x: MONTH_LABELS,
+      y,
+      mode: 'lines+markers',
+      name: `${year}年`,
+      line:   { color: RAIN_COLORS[i % RAIN_COLORS.length], width: 2.5 },
+      marker: { color: RAIN_COLORS[i % RAIN_COLORS.length], size: 6 },
+      hovertemplate: `<b>${year}年 %{x}末</b><br>累計: <b>%{y} mm</b><extra></extra>`,
+    };
+  });
+
+  Plotly.newPlot('chart-cumulative', traces, baseLayout({
+    yaxis: { title: { text: '累計降水量 (mm)', standoff: 10 }, gridcolor: '#edf2f7', rangemode: 'tozero' },
+  }), { responsive: true, displayModeBar: false });
+}
+
+// ③ 日別（タブ切り替え）
+let activeYear = null;
+function renderDailyTabs(raw) {
+  const years = Object.keys(raw).map(Number).sort();
+  const tabBar = document.getElementById('tab-bar');
+
+  years.forEach(year => {
+    const btn = document.createElement('button');
+    btn.textContent = `${year}年`;
+    btn.style.cssText = `padding:5px 16px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;
+      font-family:inherit;font-size:12px;cursor:pointer;font-weight:700;transition:all 0.15s;`;
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#tab-bar button').forEach(b => {
+        b.style.background = '#fff';
+        b.style.color = '#4a5568';
+        b.style.borderColor = '#e2e8f0';
+      });
+      btn.style.background = '#1565c0';
+      btn.style.color = '#fff';
+      btn.style.borderColor = '#1565c0';
+      renderDailyChart(raw, year);
+    });
+    tabBar.appendChild(btn);
+  });
+
+  // 最新年をデフォルト選択
+  if (years.length > 0) {
+    tabBar.querySelectorAll('button')[years.length - 1].click();
+  }
+}
+
+function renderDailyChart(raw, year) {
+  const pts = raw[year] || [];
+  const trace = {
+    x: pts.map(p => p.date),
+    y: pts.map(p => p.val),
+    type: 'bar',
+    name: `${year}年 日別`,
+    marker: { color: '#3b82f6', opacity: 0.75 },
+    hovertemplate: '%{x}<br><b>%{y} mm</b><extra></extra>',
+  };
+
+  Plotly.newPlot('chart-daily', [trace], {
+    ...baseLayout({}),
+    xaxis: {
+      type: 'date',
+      tickformat: '%-m/%-d',
+      dtick: 'M1',
+      gridcolor: '#edf2f7',
+      tickfont: { size: 11 },
+    },
+    yaxis: {
+      title: { text: '日降水量 (mm)', standoff: 10 },
+      gridcolor: '#edf2f7',
+      rangemode: 'tozero',
+      tickfont: { size: 11 },
+    },
+  }, { responsive: true, displayModeBar: false });
+}
+
+function baseLayout(overrides) {
+  return {
+    font: { family: '"Noto Sans JP", sans-serif', size: 11, color: '#4a5568' },
+    paper_bgcolor: '#fff',
+    plot_bgcolor:  '#fafbfc',
+    margin: { t: 10, r: 20, b: 50, l: 60 },
+    legend: { orientation: 'h', x: 0, y: -0.22, font: { size: 11 } },
+    hovermode: 'x unified',
+    hoverlabel: {
+      bgcolor: '#1a202c', bordercolor: '#1a202c',
+      font: { color: '#fff', size: 11, family: '"Noto Sans JP", sans-serif' },
+    },
+    xaxis: { gridcolor: '#edf2f7', tickfont: { size: 11 } },
+    ...overrides,
+  };
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+<footer style="text-align:center;padding:8px;font-size:11px;color:#888;background:#f5f5f5;border-top:1px solid #ddd;">
+  本データはNISAR L-band SARによる推定値です。現地確認の参考としてご利用ください。
+</footer>
+</body>
+</html>

@@ -1,0 +1,272 @@
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Noto Sans JP", sans-serif;
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── 地図 ── */
+#map {
+  flex: 1;
+  height: 100%;
+}
+
+/* ── サイドバー ── */
+#sidebar {
+  width: 300px;
+  min-width: 240px;
+  height: 100%;
+  background: #fff;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.12);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#sidebar-header {
+  padding: 16px;
+  background: linear-gradient(135deg, #0d47a1 0%, #1976d2 100%);
+  color: #fff;
+}
+
+#sidebar-header h1 {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+#sidebar-header p {
+  font-size: 10px;
+  margin-top: 3px;
+  opacity: 0.75;
+}
+
+.list-btn {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 5px 12px;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  text-decoration: none;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid rgba(255,255,255,0.35);
+  transition: background 0.2s;
+}
+.list-btn:hover { background: rgba(255,255,255,0.28); }
+
+/* ── 池情報エリア ── */
+#pond-info {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+#sidebar-hint {
+  color: #a0aec0;
+  font-size: 13px;
+  text-align: center;
+  margin-top: 40px;
+}
+
+#pond-info h2 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #1a365d;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+/* ── 情報テーブル ── */
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 16px;
+}
+
+.info-table th,
+.info-table td {
+  text-align: left;
+  padding: 5px 8px;
+  border-bottom: 1px solid #edf2f7;
+  vertical-align: top;
+}
+
+.info-table th {
+  width: 64px;
+  color: #718096;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.info-table td strong {
+  color: #2b6cb0;
+}
+
+.date-label {
+  font-size: 10px;
+  color: #a0aec0;
+}
+
+/* ── グラフボタン ── */
+.chart-btn {
+  display: block;
+  text-align: center;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, #1565c0 0%, #1976d2 100%);
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: opacity 0.2s, transform 0.1s;
+  box-shadow: 0 2px 6px rgba(21, 101, 192, 0.35);
+}
+
+.chart-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+/* ── フッター ── */
+#disclaimer {
+  margin: 0;
+  padding: 6px 16px;
+  font-size: 10px;
+  color: #a0aec0;
+  border-top: 1px solid #edf2f7;
+  line-height: 1.5;
+}
+
+#updated-at {
+  padding: 8px 16px;
+  font-size: 10px;
+  color: #a0aec0;
+  border-top: 1px solid #edf2f7;
+  text-align: right;
+}
+
+/* ── サイドバーハンドル（モバイル用、PCでは非表示） ── */
+#sidebar-handle { display: none; }
+
+/* ── 閉じるボタン（モバイル用、PCでは非表示） ── */
+#sidebar-header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.list-btns {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.list-btns .list-btn { margin-top: 0; }
+
+#sidebar-close {
+  display: none;
+  background: rgba(255,255,255,0.2);
+  border: none;
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+/* ── レスポンシブ ── */
+@media (max-width: 700px) {
+  body {
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* 地図はフル画面 */
+  #map {
+    width: 100%;
+    height: 100dvh;
+    flex: none;
+  }
+
+  /* サイドバーはボトムシートとして固定 */
+  #sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100%;
+    height: auto;
+    max-height: 75dvh;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 1000;
+    overflow: hidden;
+  }
+
+  /* 開いた状態 */
+  #sidebar.mobile-open {
+    transform: translateY(0);
+  }
+
+  /* ハンドルバー */
+  #sidebar-handle {
+    display: block;
+    width: 40px;
+    height: 4px;
+    background: rgba(255,255,255,0.45);
+    border-radius: 2px;
+    margin: 10px auto 4px;
+  }
+
+  /* 閉じるボタン表示 */
+  #sidebar-close {
+    display: block;
+  }
+
+  /* pond-info をスクロール可能に */
+  #pond-info {
+    max-height: calc(75dvh - 140px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* タッチターゲットを大きく */
+  .list-btn {
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+
+  .chart-btn {
+    padding: 14px 16px;
+    font-size: 14px;
+  }
+
+  /* 一覧ボタンを縦並びで全幅に */
+  .list-btns {
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  .list-btns .list-btn {
+    flex: 1;
+    text-align: center;
+  }
+}

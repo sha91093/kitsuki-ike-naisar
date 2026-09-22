@@ -1,0 +1,12 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+*.tif
+*.tiff
+*.h5
+*.hdf5
+*.nc
+work/
