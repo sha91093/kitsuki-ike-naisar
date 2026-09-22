@@ -1,7 +1,8 @@
 earthaccess>=0.15.0
 geopandas>=1.0.0
+numpy>=2.0.0
 pandas>=2.0.0
 pyogrio>=0.10.0
+rasterio>=1.4.0
 shapely>=2.0.0
 pytest>=8.0.0
-

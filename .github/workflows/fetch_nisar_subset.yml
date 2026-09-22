@@ -75,11 +75,18 @@ jobs:
           if [ -n "$INPUT_ORBIT" ]; then ARGS+=(--orbit "$INPUT_ORBIT"); fi
           python scripts/fetch_nisar.py "${ARGS[@]}"
 
+      - name: 池・岸辺・中央部の後方散乱を集計
+        run: python scripts/summarize_backscatter.py
+
       - name: 切り出し結果をArtifactへ保存
         uses: actions/upload-artifact@v4
         with:
           name: nisar-subset-${{ github.run_id }}
-          path: work/nisar_subsets/
+          path: |
+            work/nisar_subsets/
+            data/derived/nisar_backscatter_timeseries.csv
+            data/derived/nisar_backscatter_variability.csv
+            data/derived/nisar_scene_quality.csv
+            data/derived/nisar_backscatter_timeseries.metadata.json
           if-no-files-found: error
           retention-days: 7
-

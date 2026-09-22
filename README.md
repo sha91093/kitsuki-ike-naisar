@@ -16,7 +16,7 @@ Sentinel-1 Cバンドでは捉えにくかった樹木周辺の水位変動域�
 
 ## 現在の実装段階
 
-最初の段階として、池ポリゴンのGeoJSONを使い、杵築市をカバーするNISAR GCOVプロダクトをNASA Earthdataから検索してカタログCSV/JSONを生成します。
+池ポリゴンのGeoJSONを使い、杵築市をカバーするNISAR GCOVプロダクトをNASA Earthdataから検索し、元の大型HDF5を保存せずHH/HVだけを遠隔部分取得します。
 
 ```text
 kitsuki_ponds_final.geojson
@@ -27,7 +27,7 @@ data/nisar_catalog/catalog.csv
 data/nisar_catalog/catalog.json
 ```
 
-画像の部分取得、HH/HV解析、水面積計算は、利用可能な観測モードと偏波をカタログで確認した後に追加します。
+取得後は各池を「全体」「内側50 mの岸辺」「中央部」に分け、HH/HV後方散乱の分位点を時系列CSVへ集計します。このCSVは変動箇所を調べる診断データであり、まだ水面積の推定値ではありません。
 
 2026年9月22日時点の実際の池GeoJSONによる検索では、2026年6月17日以降に杵築市をカバーするPROVISIONAL GCOVが14プロダクト、処理改訂の重複を除いて13観測見つかりました。Frequency Aは全観測でHH+HV、40 MHzで、今回の検証に適した構成です。
 
@@ -94,6 +94,25 @@ python scripts/fetch_nisar.py --dry-run --limit 1
 ```
 
 出力は `work/nisar_subsets/` に保存され、Gitにはコミットされません。GitHub Actionsの「NISAR HH・HV部分取得」からも手動実行でき、結果は7日間保持されるArtifactとして取得できます。
+
+## 池・岸辺の後方散乱時系列
+
+HH/HVがそろったGeoTIFFから、池全体・岸辺・中央部を分けてdB統計を作ります。
+
+```bash
+python scripts/summarize_backscatter.py \
+  --input-dir work/nisar_subsets \
+  --shoreline-width-m 50
+```
+
+出力:
+
+- `data/derived/nisar_backscatter_timeseries.csv`
+- `data/derived/nisar_backscatter_variability.csv`
+- `data/derived/nisar_scene_quality.csv`
+- `data/derived/nisar_backscatter_timeseries.metadata.json`
+
+`median_db`、`p10_db`、`p90_db`などを軌道方向別に比較します。全池が同時に3 dBを超えて動いたシーンは `nisar_scene_quality.csv` で `review` とし、池別の変動幅計算から除外します。Lバンドで岸辺変動が確認できてから、開放水面と植生下冠水の分類規則を決定します。
 
 ## GitHub Actions
 
