@@ -3,41 +3,37 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>杵築市 池水面面積モニタリング</title>
-
+  <title>杵築市 NISAR Lバンド診断</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/style.css" />
 </head>
 <body>
-  <div id="map"></div>
-
-  <div id="sidebar">
+  <main id="map" aria-label="池の診断地図"></main>
+  <aside id="sidebar">
     <div id="sidebar-handle"></div>
-    <div id="sidebar-header">
+    <header id="sidebar-header">
       <div id="sidebar-header-top">
         <div>
-          <h1>杵築市 池水面面積モニタリング</h1>
-          <p>NISAR L-band SAR（降交軌道）による自動観測</p>
+          <span class="eyebrow">NISAR L-BAND / DIAGNOSTIC</span>
+          <h1>杵築市 池・岸辺変動マップ</h1>
+          <p>水面積を決める前に、HH/HVと降雨影響を確認する画面です。</p>
         </div>
         <button id="sidebar-close" aria-label="閉じる">×</button>
       </div>
-      <div class="list-btns">
-        <a class="list-btn" href="list.html">📋 一覧・印刷ページ</a>
-        <a class="list-btn" href="rain.html">🌧 降水量参照</a>
-      </div>
-    </div>
-
-    <div id="pond-info">
-      <p id="sidebar-hint">地図上の池をクリックしてください</p>
-    </div>
-
-    <div id="disclaimer">本データはNISAR L-band SARによる推定値です。現地確認の参考としてご利用ください。</div>
-    <div id="updated-at"></div>
-  </div>
-
+      <a class="header-link" href="rain.html">日別降水量を見る →</a>
+    </header>
+    <section class="map-controls" aria-label="地図表示条件">
+      <label>軌道<select id="orbit-select"><option value="descending">降交軌道</option><option value="ascending">昇交軌道</option></select></label>
+      <label>偏波<select id="layer-select"><option value="HHHH">HH</option><option value="HVHV">HV</option></select></label>
+      <label>変動幅<select id="range-select"><option value="range_db">全観測</option><option value="range_without_common_shift_db">共通変化を除く参考値</option></select></label>
+      <div class="legend"><span><i class="swatch s1"></i>0–1</span><span><i class="swatch s2"></i>1–2</span><span><i class="swatch s3"></i>2–4</span><span><i class="swatch s4"></i>4 dB以上</span></div>
+    </section>
+    <section id="pond-info"><div class="empty-state"><strong>池を選択してください</strong><p>色は岸辺50 m帯の時系列変動幅です。赤いほど変化が大きい池です。</p></div></section>
+    <footer><div id="updated-at"></div><p>診断値であり、水面積・冠水面積の確定値ではありません。</p></footer>
+  </aside>
   <script src="assets/app.js"></script>
 </body>
 </html>

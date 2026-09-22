@@ -52,5 +52,5 @@ def test_scene_quality_flags_common_shift():
 
     quality = scene_quality(pd.DataFrame(records), 3.0)
 
-    assert quality.iloc[-1]["scene_quality_flag"] == "review"
+    assert quality.iloc[-1]["scene_quality_flag"] == "common_shift"
     assert quality.iloc[0]["scene_quality_flag"] == "ok"

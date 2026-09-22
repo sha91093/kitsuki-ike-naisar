@@ -112,7 +112,27 @@ python scripts/summarize_backscatter.py \
 - `data/derived/nisar_scene_quality.csv`
 - `data/derived/nisar_backscatter_timeseries.metadata.json`
 
-`median_db`、`p10_db`、`p90_db`などを軌道方向別に比較します。全池が同時に3 dBを超えて動いたシーンは `nisar_scene_quality.csv` で `review` とし、池別の変動幅計算から除外します。Lバンドで岸辺変動が確認できてから、開放水面と植生下冠水の分類規則を決定します。
+`median_db`、`p10_db`、`p90_db`などを軌道方向別に比較します。全池が同時に3 dBを超えて動いたシーンは `nisar_scene_quality.csv` で `common_shift` として表示します。これは降雨や広域的な含水率変化を含む可能性があるため除外せず、降水量と一緒に評価します。Lバンドで岸辺変動が確認できてから、開放水面と植生下冠水の分類規則を決定します。
+
+## 診断サイト
+
+`docs/`には、30池のポリゴン地図と池別診断画面があります。
+
+- 降交／昇交、HH／HV、全観測／共通変化を除く参考値を地図で切り替え
+- 岸辺50 m・池全体・中央部の後方散乱を比較
+- HH/HVのp10〜p90、中央値、日降水量を同じ時系列で表示
+- 観測前1日・3日・7日降水量を付与
+- 全池共通変化を保持したまま降雨影響候補として表示
+- 暫定しきい値を操作し、植生下冠水候補を比較
+
+日降水量とWeb用JSONの更新:
+
+```bash
+python scripts/fetch_weather.py --start 2026-06-17 --end 2026-09-20
+python scripts/build_dashboard_data.py
+```
+
+候補判定は分類条件を検討するための診断機能であり、水面積の確定値ではありません。
 
 ## GitHub Actions
 

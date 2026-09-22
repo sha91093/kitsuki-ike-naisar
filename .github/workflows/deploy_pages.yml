@@ -1,0 +1,37 @@
+name: 診断サイトを公開
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - '.github/workflows/deploy_pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+      - name: GitHub Pagesを設定
+        uses: actions/configure-pages@v5
+      - name: サイトをアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - name: 公開
+        id: deployment
+        uses: actions/deploy-pages@v4

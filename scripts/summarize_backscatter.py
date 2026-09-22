@@ -117,7 +117,7 @@ def scene_quality(frame: pd.DataFrame, review_threshold_db: float) -> pd.DataFra
         quality["scene_median_db"] - quality["orbit_layer_reference_db"]
     )
     quality["scene_quality_flag"] = np.where(
-        quality["scene_shift_db"].abs() > review_threshold_db, "review", "ok"
+        quality["scene_shift_db"].abs() > review_threshold_db, "common_shift", "ok"
     )
     return quality.sort_values(["observation_time", "layer"])
 
@@ -189,9 +189,8 @@ def summarize(args: argparse.Namespace) -> pd.DataFrame:
     result.to_csv(args.output, index=False, float_format="%.6f")
     args.scene_output.parent.mkdir(parents=True, exist_ok=True)
     quality.to_csv(args.scene_output, index=False, float_format="%.6f")
-    usable = result[result["scene_quality_flag"] == "ok"]
     variability = (
-        usable.groupby(
+        result.groupby(
             ["pond_id", "pond_name", "orbit_direction", "layer", "zone"],
             as_index=False,
         )
@@ -208,6 +207,19 @@ def summarize(args: argparse.Namespace) -> pd.DataFrame:
     variability["median_range_db"] = (
         variability["median_max_db"] - variability["median_min_db"]
     )
+    stable_variability = (
+        result[result["scene_quality_flag"] == "ok"]
+        .groupby(["pond_id", "pond_name", "orbit_direction", "layer", "zone"])["median_db"]
+        .agg(lambda values: values.max() - values.min())
+        .rename("median_range_without_common_shift_db")
+        .reset_index()
+    )
+    variability = variability.merge(
+        stable_variability,
+        on=["pond_id", "pond_name", "orbit_direction", "layer", "zone"],
+        how="left",
+        validate="one_to_one",
+    )
     args.summary_output.parent.mkdir(parents=True, exist_ok=True)
     variability.to_csv(args.summary_output, index=False, float_format="%.6f")
     metadata_path = args.output.with_suffix(".metadata.json")
@@ -222,8 +234,10 @@ def summarize(args: argparse.Namespace) -> pd.DataFrame:
                 "rows": int(len(result)),
                 "variability_rows": int(len(variability)),
                 "scene_shift_review_db": args.scene_shift_review_db,
-                "review_scene_layers": int((quality["scene_quality_flag"] == "review").sum()),
-                "note": "診断用の後方散乱統計。水面積の推定値ではない。",
+                "common_shift_scene_layers": int(
+                    (quality["scene_quality_flag"] == "common_shift").sum()
+                ),
+                "note": "診断用の後方散乱統計。common_shiftは降雨等の実変化を含み得るため除外しない。水面積の推定値ではない。",
             },
             ensure_ascii=False,
             indent=2,

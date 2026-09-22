@@ -1,115 +1,12 @@
 'use strict';
-
-const KITSUKI_CENTER = [33.416, 131.621];
-const INITIAL_ZOOM = 12;
-
-let map;
-let pondLayers = {};
-let selectedPondId = null;
-let pondData = {};
-
-async function init() {
-  map = L.map('map').setView(KITSUKI_CENTER, INITIAL_ZOOM);
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19,
-  }).addTo(map);
-
-  try {
-    const resp = await fetch('data.json');
-    if (!resp.ok) throw new Error(`data.json 読み込み失敗: ${resp.status}`);
-    const data = await resp.json();
-    renderData(data);
-  } catch (e) {
-    console.error(e);
-    document.getElementById('sidebar-hint').textContent =
-      'データの読み込みに失敗しました。';
-  }
-}
-
-function renderData(data) {
-  if (data.updated_at) {
-    document.getElementById('updated-at').textContent =
-      `最終更新: ${data.updated_at.replace('T', ' ')} UTC`;
-  }
-
-  data.ponds.forEach(pond => { pondData[pond.id] = pond; });
-
-  data.ponds.forEach(pond => {
-    if (pond.lat == null || pond.lng == null) return;
-
-    const layer = L.circleMarker([pond.lat, pond.lng], {
-      radius: 8,
-      color: '#1565c0',
-      fillColor: '#42a5f5',
-      fillOpacity: 0.75,
-      weight: 1.5,
-    });
-
-    layer.bindTooltip(`${pond.name}（${pond.tiiki} ${pond.ooaza}）`,
-      { permanent: false, direction: 'top', offset: [0, -8] });
-    layer.on('click', () => selectPond(pond.id));
-    layer.addTo(map);
-
-    pondLayers[pond.id] = layer;
-  });
-}
-
-function selectPond(pondId) {
-  if (selectedPondId && pondLayers[selectedPondId]) {
-    pondLayers[selectedPondId].setStyle({ color: '#1565c0', fillColor: '#42a5f5' });
-  }
-
-  selectedPondId = pondId;
-  const pond = pondData[pondId];
-  if (!pond) return;
-
-  pondLayers[pondId]?.setStyle({ color: '#c62828', fillColor: '#ef9a9a' });
-
-  // 直近の非ゼロデータを最新値として使用
-  const latest = pond.timeseries?.slice().reverse().find(d => d.water_area_m2 > 0)
-    ?? pond.timeseries?.[pond.timeseries.length - 1]
-    ?? null;
-  const latestHa = latest ? (latest.water_area_m2 / 10000).toFixed(4) : null;
-
-  document.getElementById('pond-info').innerHTML = `
-    <h2>${pond.name}</h2>
-    <table class="info-table">
-      <tr><th>地域</th><td>${pond.tiiki || '—'}</td></tr>
-      <tr><th>大字</th><td>${pond.ooaza || '—'}</td></tr>
-      <tr><th>登録面積</th><td>${pond.area_ha != null ? pond.area_ha + ' ha' : '—'}</td></tr>
-      <tr><th>最新水面</th><td><strong>${latestHa ? latestHa + ' ha' : 'データなし'}</strong>${latest ? `<br><span class="date-label">${latest.date}</span>` : ''}</td></tr>
-    </table>
-    <a class="chart-btn" href="pond.html?id=${pondId}" target="_blank">
-      📈 年別比較グラフを見る
-    </a>
-  `;
-
-  if (isMobile()) openSidebar();
-}
-
-function isMobile() {
-  return window.innerWidth <= 700;
-}
-
-function openSidebar() {
-  document.getElementById('sidebar').classList.add('mobile-open');
-}
-
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('mobile-open');
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-  init();
-
-  document.getElementById('sidebar-close').addEventListener('click', closeSidebar);
-
-  // 地図の空白部分タップでサイドバーを閉じる
-  document.getElementById('map').addEventListener('click', e => {
-    if (isMobile() && e.target.closest('#map') && !e.target.closest('.leaflet-marker-icon, .leaflet-interactive')) {
-      closeSidebar();
-    }
-  });
-});
+const map=L.map('map').setView([33.43,131.58],11);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(map);
+let dashboard,selectedId=null;const layers=new Map();
+const controls=()=>({orbit:document.getElementById('orbit-select').value,layer:document.getElementById('layer-select').value,metric:document.getElementById('range-select').value});
+function metricFor(pond,o=controls()){const v=pond.variability.find(x=>x.orbit===o.orbit&&x.layer===o.layer&&x.zone==='shoreline');return v?.[o.metric]??null}
+function colorFor(v){if(v==null)return'#94a39b';if(v<1)return'#56a878';if(v<2)return'#b4c851';if(v<4)return'#efa53e';return'#d95640'}
+function polygonStyle(pond){const selected=String(pond.id)===String(selectedId);return{color:selected?'#102f28':'#fff',weight:selected?3:1.2,fillColor:colorFor(metricFor(pond)),fillOpacity:selected?.92:.72}}
+function updateMapStyles(){dashboard.ponds.forEach(p=>{const layer=layers.get(String(p.id));layer?.setStyle(polygonStyle(p));layer?.setTooltipContent(`${p.name}<br>岸辺変動: ${metricFor(p)?.toFixed(2)??'—'} dB`)});if(selectedId!=null)showPond(selectedId,false)}
+function variabilityCell(p,o,l){return p.variability.find(v=>v.orbit===o&&v.layer===l&&v.zone==='shoreline')}
+function showPond(id,pan=true){const p=dashboard.ponds.find(x=>String(x.id)===String(id));if(!p)return;selectedId=String(id);dashboard.ponds.forEach(x=>layers.get(String(x.id))?.setStyle(polygonStyle(x)));const chosen=metricFor(p),dh=variabilityCell(p,'descending','HHHH'),dv=variabilityCell(p,'descending','HVHV'),ah=variabilityCell(p,'ascending','HHHH'),av=variabilityCell(p,'ascending','HVHV'),wet=Math.max(0,...p.timeseries.map(x=>x.rain_7d_mm??0));document.getElementById('pond-info').innerHTML=`<div class="pond-title-row"><div><span class="pond-kicker">POND ${p.id}</span><h2>${p.name}</h2></div><div class="range-badge"><strong>${chosen?.toFixed(2)??'—'}</strong><span>岸辺変動 dB</span></div></div><div class="meta-grid"><div class="meta-card"><span>地域</span><strong>${p.tiiki}・${p.ooaza}</strong></div><div class="meta-card"><span>登録面積</span><strong>${p.area_ha??'—'} ha</strong></div><div class="meta-card"><span>観測期間</span><strong>2026年6–9月</strong></div><div class="meta-card"><span>観測前7日雨量 最大</span><strong>${wet.toFixed(1)} mm</strong></div></div><table class="signal-table"><caption>岸辺の中央値変動幅（全観測）</caption><thead><tr><th>軌道</th><th>HH</th><th>HV</th></tr></thead><tbody><tr><td>降交</td><td>${dh?.range_db?.toFixed(2)??'—'} dB</td><td>${dv?.range_db?.toFixed(2)??'—'} dB</td></tr><tr><td>昇交</td><td>${ah?.range_db?.toFixed(2)??'—'} dB</td><td>${av?.range_db?.toFixed(2)??'—'} dB</td></tr></tbody></table><div class="notice">7月8日を含む全池共通変化は除外していません。降雨量とHH/HVの動きを詳細画面で確認できます。</div><a class="detail-btn" href="pond.html?id=${p.id}">時系列と分類条件を確認 →</a>`;if(pan)map.fitBounds(layers.get(String(id)).getBounds(),{maxZoom:15,padding:[30,30]});if(innerWidth<=760)document.getElementById('sidebar').classList.add('mobile-open')}
+async function init(){const r=await fetch('data.json');if(!r.ok)throw Error('data.jsonを読み込めません');dashboard=await r.json();const group=L.featureGroup().addTo(map);dashboard.ponds.forEach(p=>{const layer=L.geoJSON(p.geometry,{style:()=>polygonStyle(p)});layer.bindTooltip(`${p.name}<br>岸辺変動: ${metricFor(p)?.toFixed(2)??'—'} dB`,{sticky:true});layer.on('click',()=>showPond(p.id));layer.addTo(group);layers.set(String(p.id),layer)});map.fitBounds(group.getBounds(),{padding:[20,20]});document.getElementById('updated-at').textContent=`データ更新: ${dashboard.updated_at.slice(0,10)}`}
+['orbit-select','layer-select','range-select'].forEach(id=>document.getElementById(id).addEventListener('change',updateMapStyles));document.getElementById('sidebar-close').addEventListener('click',()=>document.getElementById('sidebar').classList.remove('mobile-open'));init().catch(e=>{console.error(e);document.getElementById('pond-info').textContent='データの読み込みに失敗しました。'});

@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-09-22T15:26:29.142056+00:00",
-  "input_dir": "work/action-artifacts/run-35745751915/nisar-subset-35745751915",
+  "generated_at": "2026-09-22T22:17:18.474910+00:00",
+  "input_dir": "work/action-artifacts/run-35747477757/nisar-subset-35747477757",
   "observations": 13,
   "ponds": 30,
   "shoreline_width_m": 50.0,
   "rows": 1846,
   "variability_rows": 284,
   "scene_shift_review_db": 3.0,
-  "review_scene_layers": 2,
-  "note": "診断用の後方散乱統計。水面積の推定値ではない。"
+  "common_shift_scene_layers": 2,
+  "note": "診断用の後方散乱統計。common_shiftは降雨等の実変化を含み得るため除外しない。水面積の推定値ではない。"
 }
