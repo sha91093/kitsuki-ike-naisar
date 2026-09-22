@@ -47,8 +47,8 @@ jobs:
           END_DATE: ${{ inputs.end_date }}
           BUFFER_M: ${{ inputs.buffer_m }}
         run: |
-          test -f data/static/ponds.gpkg || {
-            echo 'data/static/ponds.gpkg がありません'
+          test -f data/static/kitsuki_ponds_final.geojson || {
+            echo 'data/static/kitsuki_ponds_final.geojson がありません'
             exit 1
           }
           python scripts/search_nisar.py \
@@ -63,4 +63,3 @@ jobs:
           git add data/nisar_catalog
           git diff --staged --quiet || git commit -m "Update NISAR availability catalog"
           git push
-

@@ -1,4 +1,4 @@
-"""GeoPackageの池ポリゴンを使ってNISAR L2 GCOVを検索する。
+"""GeoJSONの池ポリゴンを使ってNISAR L2 GCOVを検索する。
 
 このスクリプトは画像をダウンロードしない。CMR/Earthdataの検索結果だけを
 CSV/JSONへ保存し、杵築市で利用できる観測日・プロダクトを確認する。
@@ -22,7 +22,7 @@ from shapely.geometry.polygon import orient
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_GPKG = REPO_ROOT / "data" / "static" / "ponds.gpkg"
+DEFAULT_GEOJSON = REPO_ROOT / "data" / "static" / "kitsuki_ponds_final.geojson"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "data" / "nisar_catalog"
 COLLECTION = "NISAR_L2_GCOV_PROVISIONAL_V1"
 
@@ -34,19 +34,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def load_search_aoi(gpkg: Path, layer: str | None, id_column: str, buffer_m: float):
+def load_search_aoi(geojson: Path, id_column: str, buffer_m: float):
     """池ポリゴンを読み込み、バッファー付き検索領域をWGS84で返す。"""
-    if not gpkg.exists():
+    if not geojson.exists():
         raise FileNotFoundError(
-            f"GeoPackageが見つかりません: {gpkg}\n"
-            "池ポリゴンを data/static/ponds.gpkg に配置してください。"
+            f"GeoJSONが見つかりません: {geojson}\n"
+            "池ポリゴンを data/static/kitsuki_ponds_final.geojson に配置してください。"
         )
 
-    ponds = gpd.read_file(gpkg, layer=layer)
+    ponds = gpd.read_file(geojson)
     if ponds.empty:
-        raise ValueError(f"GeoPackageに地物がありません: {gpkg}")
+        raise ValueError(f"GeoJSONに地物がありません: {geojson}")
     if ponds.crs is None:
-        raise ValueError("GeoPackageに座標参照系（CRS）が設定されていません")
+        raise ValueError("GeoJSONに座標参照系（CRS）が設定されていません")
     if id_column not in ponds.columns:
         raise ValueError(
             f"池IDカラム '{id_column}' がありません。利用可能: {list(ponds.columns)}"
@@ -56,7 +56,7 @@ def load_search_aoi(gpkg: Path, layer: str | None, id_column: str, buffer_m: flo
     if ponds.empty:
         raise ValueError("有効な池ポリゴンがありません")
     if not ponds.geometry.geom_type.isin(["Polygon", "MultiPolygon"]).all():
-        raise ValueError("GeoPackageにはPolygonまたはMultiPolygonが必要です")
+        raise ValueError("GeoJSONにはPolygonまたはMultiPolygonが必要です")
 
     # 距離バッファーは地域に適したUTM座標系で計算する。
     metric_crs = ponds.estimate_utm_crs()
@@ -188,9 +188,8 @@ def write_outputs(results: list[Any], aoi, output_dir: Path) -> pd.DataFrame:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="GeoPackageを使ってNISAR GCOVを検索")
-    parser.add_argument("--gpkg", type=Path, default=DEFAULT_GPKG)
-    parser.add_argument("--layer", help="GeoPackageのレイヤー名（未指定なら先頭）")
+    parser = argparse.ArgumentParser(description="GeoJSONを使ってNISAR GCOVを検索")
+    parser.add_argument("--geojson", type=Path, default=DEFAULT_GEOJSON)
     parser.add_argument("--id-column", default="simple_id")
     parser.add_argument("--buffer-m", type=float, default=100.0)
     parser.add_argument("--start", default="2026-06-17")
@@ -204,7 +203,7 @@ def main() -> None:
     args = parse_args()
     if args.buffer_m < 0:
         raise ValueError("--buffer-m は0以上にしてください")
-    ponds, aoi = load_search_aoi(args.gpkg, args.layer, args.id_column, args.buffer_m)
+    ponds, aoi = load_search_aoi(args.geojson, args.id_column, args.buffer_m)
     logger.info("池ポリゴン: %d件", len(ponds))
     authenticate_if_configured()
     results = search(aoi, args.start, args.end, args.count)

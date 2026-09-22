@@ -16,10 +16,10 @@ Sentinel-1 Cバンドでは捉えにくかった樹木周辺の水位変動域�
 
 ## 現在の実装段階
 
-最初の段階として、池ポリゴンのGeoPackageを使い、杵築市をカバーするNISAR GCOVプロダクトをNASA Earthdataから検索してカタログCSV/JSONを生成します。
+最初の段階として、池ポリゴンのGeoJSONを使い、杵築市をカバーするNISAR GCOVプロダクトをNASA Earthdataから検索してカタログCSV/JSONを生成します。
 
 ```text
-ponds.gpkg
+kitsuki_ponds_final.geojson
     ↓ 100 mバッファー・検索領域作成
 EarthdataでNISAR L2 GCOVを検索
     ↓
@@ -29,17 +29,17 @@ data/nisar_catalog/catalog.json
 
 画像の部分取得、HH/HV解析、水面積計算は、利用可能な観測モードと偏波をカタログで確認した後に追加します。
 
-2026年9月22日時点の池リストCSVの範囲による予備検索では、2026年6月17日以降に杵築市をカバーするPROVISIONAL GCOVが14件見つかりました。Frequency AはHH+HV、40 MHzで、今回の検証に適した構成です。最終的な検索結果はGeoPackageを配置後に確定します。
+2026年9月22日時点の池リストCSVの範囲による予備検索では、2026年6月17日以降に杵築市をカバーするPROVISIONAL GCOVが14件見つかりました。Frequency AはHH+HV、40 MHzで、今回の検証に適した構成です。最終的な検索結果はGeoJSONを配置後に確定します。
 
 ## 必要なファイル
 
 池ポリゴンを次へ配置してください。
 
 ```text
-data/static/ponds.gpkg
+data/static/kitsuki_ponds_final.geojson
 ```
 
-GeoPackageには池IDを格納した `simple_id` カラムが必要です。ファイル名とIDカラムはコマンドライン引数で変更できます。
+GeoJSONには池IDを格納した `simple_id` カラムが必要です。ファイル名とIDカラムはコマンドライン引数で変更できます。
 
 ## セットアップ
 
@@ -60,7 +60,7 @@ export EARTHDATA_PASSWORD='your-password'
 
 ```bash
 python scripts/search_nisar.py \
-  --gpkg data/static/ponds.gpkg \
+  --geojson data/static/kitsuki_ponds_final.geojson \
   --start 2026-06-17 \
   --end 2026-12-31 \
   --buffer-m 100
