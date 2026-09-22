@@ -18,6 +18,7 @@ import earthaccess
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import mapping
+from shapely.geometry.polygon import orient
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -72,10 +73,10 @@ def polygon_coordinates(geometry) -> list[tuple[float, float]]:
 
     分散した複数池を確実に包含するため凸包を使い、点数を抑える。
     """
-    hull = geometry.convex_hull
+    hull = orient(geometry.convex_hull, sign=1.0)
     coords = list(hull.exterior.coords)
     if len(coords) > 300:
-        hull = hull.simplify(0.0001, preserve_topology=True)
+        hull = orient(hull.simplify(0.0001, preserve_topology=True), sign=1.0)
         coords = list(hull.exterior.coords)
     return [(float(x), float(y)) for x, y in coords]
 

@@ -1,4 +1,4 @@
-from shapely.geometry import Polygon
+from shapely.geometry import LinearRing, Polygon
 
 from scripts.search_nisar import polygon_coordinates, result_to_row
 
@@ -15,6 +15,7 @@ def test_polygon_coordinates_returns_closed_ring():
     assert len(coordinates) >= 4
     assert coordinates[0] == coordinates[-1]
     assert all(len(point) == 2 for point in coordinates)
+    assert LinearRing(coordinates).is_ccw
 
 
 def test_result_to_row_extracts_frequency_a_metadata():
