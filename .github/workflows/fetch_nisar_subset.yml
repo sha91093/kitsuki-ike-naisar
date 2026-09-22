@@ -1,0 +1,85 @@
+name: NISAR HH・HV部分取得
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '観測日（YYYY-MM-DD、空欄なら最初の未指定観測）'
+        required: false
+        default: ''
+        type: string
+      orbit:
+        description: '軌道（空欄なら両方）'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - ASCENDING
+          - DESCENDING
+      limit:
+        description: '処理する観測数'
+        required: false
+        default: '1'
+        type: string
+      layers:
+        description: '取得レイヤー'
+        required: false
+        default: 'HHHH,HVHV'
+        type: choice
+        options:
+          - HHHH,HVHV
+          - HHHH
+          - HVHV
+
+jobs:
+  subset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Pythonをセットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: GDALをインストール
+        run: sudo apt-get update && sudo apt-get install -y gdal-bin
+
+      - name: Python依存ライブラリをインストール
+        run: pip install -r requirements.txt
+
+      - name: Earthdata認証を確認
+        env:
+          EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
+          EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+        run: |
+          test -n "$EARTHDATA_USERNAME" || { echo 'EARTHDATA_USERNAME secret がありません'; exit 1; }
+          test -n "$EARTHDATA_PASSWORD" || { echo 'EARTHDATA_PASSWORD secret がありません'; exit 1; }
+
+      - name: HH・HVを池周辺だけ切り出す
+        env:
+          EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
+          EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+          INPUT_DATE: ${{ inputs.date }}
+          INPUT_ORBIT: ${{ inputs.orbit }}
+          INPUT_LIMIT: ${{ inputs.limit }}
+          INPUT_LAYERS: ${{ inputs.layers }}
+        run: |
+          ARGS=(--limit "$INPUT_LIMIT" --layers "$INPUT_LAYERS")
+          if [ -n "$INPUT_DATE" ]; then ARGS+=(--date "$INPUT_DATE"); fi
+          if [ -n "$INPUT_ORBIT" ]; then ARGS+=(--orbit "$INPUT_ORBIT"); fi
+          python scripts/fetch_nisar.py "${ARGS[@]}"
+
+      - name: 切り出し結果をArtifactへ保存
+        uses: actions/upload-artifact@v4
+        with:
+          name: nisar-subset-${{ github.run_id }}
+          path: work/nisar_subsets/
+          if-no-files-found: error
+          retention-days: 7
+

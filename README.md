@@ -74,6 +74,27 @@ python scripts/search_nisar.py \
 - `data/nisar_catalog/catalog.json`
 - `data/nisar_catalog/search_aoi.geojson`
 
+## HH・HVの部分取得
+
+NISAR HDF5全体（1シーン約5.7GB）は保存せず、GDALのRange Requestで池ポリゴン周辺100mだけをGeoTIFFへ切り出します。
+
+GDALをインストールし、Earthdata Loginの認証情報を環境変数または `~/.netrc` に設定してください。
+
+```bash
+python scripts/fetch_nisar.py \
+  --date 2026-06-26 \
+  --layers HHHH,HVHV \
+  --limit 1
+```
+
+確認だけ行う場合:
+
+```bash
+python scripts/fetch_nisar.py --dry-run --limit 1
+```
+
+出力は `work/nisar_subsets/` に保存され、Gitにはコミットされません。GitHub Actionsの「NISAR HH・HV部分取得」からも手動実行でき、結果は7日間保持されるArtifactとして取得できます。
+
 ## GitHub Actions
 
 「NISARデータ利用可能性チェック」を手動実行できます。リポジトリのSecretsへ以下を登録してください。
