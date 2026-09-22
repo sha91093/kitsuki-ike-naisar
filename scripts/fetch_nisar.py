@@ -86,7 +86,7 @@ def load_catalog(
     return catalog
 
 
-def buffered_cutline_wkt(geojson_path: Path, id_column: str, buffer_m: float) -> str:
+def buffered_cutline_geometry(geojson_path: Path, id_column: str, buffer_m: float):
     if not geojson_path.exists():
         raise FileNotFoundError(f"池GeoJSONが見つかりません: {geojson_path}")
     ponds = gpd.read_file(geojson_path)
@@ -101,13 +101,13 @@ def buffered_cutline_wkt(geojson_path: Path, id_column: str, buffer_m: float) ->
     buffered = ponds.to_crs(metric_crs).geometry.buffer(buffer_m)
     cutline = buffered.union_all().simplify(2.0, preserve_topology=True)
     cutline_wgs84 = gpd.GeoSeries([cutline], crs=metric_crs).to_crs("EPSG:4326").iloc[0]
-    return cutline_wgs84.wkt
+    return cutline_wgs84
 
 
 def build_gdalwarp_command(
     source: str,
     output_path: Path,
-    cutline_wkt: str,
+    cutline_path: Path,
     cookie_file: Path,
 ) -> list[str]:
     return [
@@ -115,8 +115,7 @@ def build_gdalwarp_command(
         "-of", "GTiff",
         source,
         str(output_path),
-        "-cutline", cutline_wkt,
-        "-cutline_srs", "EPSG:4326",
+        "-cutline", str(cutline_path),
         "-crop_to_cutline",
         "-dstalpha",
         "-multi",
@@ -188,17 +187,21 @@ def run(args: argparse.Namespace) -> list[dict]:
         raise ValueError(f"未対応レイヤー: {sorted(unknown)}")
 
     catalog = load_catalog(args.catalog, args.orbit, args.date, args.granule_id, args.limit)
-    cutline_wkt = buffered_cutline_wkt(args.geojson, args.id_column, args.buffer_m)
+    cutline_geometry = buffered_cutline_geometry(args.geojson, args.id_column, args.buffer_m)
     version = gdal_version()
     logger.info("GDAL %s.%s.%s / %d観測 / レイヤー %s", *version, len(catalog), layers)
 
     manifest: list[dict] = []
     with earthdata_environment(args.dry_run) as (env, cookie_file):
+        cutline_path = cookie_file.parent / "pond_buffers.geojson"
+        gpd.GeoDataFrame(
+            {"name": ["pond_buffers"]}, geometry=[cutline_geometry], crs="EPSG:4326"
+        ).to_file(cutline_path, driver="GeoJSON")
         for _, row in catalog.iterrows():
             for layer in layers:
                 output_path = output_path_for(row, layer, args.output_dir)
                 source = dataset_source(row["download_url"], layer, version)
-                command = build_gdalwarp_command(source, output_path, cutline_wkt, cookie_file)
+                command = build_gdalwarp_command(source, output_path, cutline_path, cookie_file)
 
                 record = {
                     "granule_id": row["granule_id"],
@@ -262,4 +265,3 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     run(parse_args())
-

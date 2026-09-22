@@ -33,12 +33,13 @@ def test_gdalwarp_command_contains_remote_and_cutline_options():
     command = build_gdalwarp_command(
         'HDF5:"/vsicurl/https://example.test/a.h5"://science/x',
         Path("out.tif"),
-        "POLYGON((0 0,1 0,1 1,0 0))",
+        Path("pond_buffers.geojson"),
         Path("cookies.txt"),
     )
 
     assert command[0] == "gdalwarp"
     assert "-crop_to_cutline" in command
+    assert "-cutline_srs" not in command
+    assert "pond_buffers.geojson" in command
     assert "GDAL_HTTP_NETRC" in command
     assert "COMPRESS=DEFLATE" in command
-
