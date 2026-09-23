@@ -14,11 +14,11 @@
     const dry = comparison.dry;
     section.hidden = false;
     document.getElementById('boundary-description').textContent =
-      'OSMポリゴンを水際の正解ではなく基準線として、内外100 mを6帯に分けた試験解析です。';
+      'OSMポリゴンを基準線として内外100 mを6帯に分け、多雨期2観測と少雨期3観測を画素ごとの中央値で合成した解析です。';
     document.getElementById('boundary-summary').innerHTML = `
       <div class="summary-card"><span>比較軌道</span><strong>${orbitLabels[comparison.orbit]}</strong><small>同一軌道のみ</small></div>
-      <div class="summary-card"><span>多雨側</span><strong>${wet.date}</strong><small>前7日 ${wet.rain_7d_mm.toFixed(1)} mm</small></div>
-      <div class="summary-card"><span>少雨側</span><strong>${dry.date}</strong><small>前7日 ${dry.rain_7d_mm.toFixed(1)} mm</small></div>
+      <div class="summary-card"><span>多雨期 ${wet.count}観測</span><strong>${wet.dates.join('・')}</strong><small>前7日 ${wet.rain_7d_mm.map(value => value.toFixed(1)).join(' / ')} mm</small></div>
+      <div class="summary-card"><span>少雨期 ${dry.count}観測</span><strong>${dry.dates.join('・')}</strong><small>前7日 ${dry.rain_7d_mm.map(value => value.toFixed(1)).join(' / ')} mm</small></div>
       <div class="summary-card"><span>一次判定</span><strong>${data.assessment.label}</strong><small>外側0–20 m 対 50–100 m</small></div>`;
 
     const summaries = data.band_summary.filter(

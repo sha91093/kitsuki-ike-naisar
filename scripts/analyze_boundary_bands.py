@@ -97,6 +97,34 @@ def nanmedian_filter(values: np.ndarray, size: int = 3) -> np.ndarray:
         return np.nanmedian(windows, axis=(-2, -1))
 
 
+def select_composite_groups(
+    observations: pd.DataFrame,
+    wet_min_rain_mm: float,
+    dry_max_rain_mm: float,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """降雨量条件で多雨・少雨の複数観測を選ぶ。足りなければ上下2観測を使う。"""
+    ordered = observations.sort_values(["rain_7d_mm", "date"])
+    wet = ordered[ordered["rain_7d_mm"] >= wet_min_rain_mm]
+    dry = ordered[ordered["rain_7d_mm"] <= dry_max_rain_mm]
+    if len(wet) < 2:
+        wet = ordered.tail(min(2, len(ordered)))
+    if len(dry) < 2:
+        dry = ordered.head(min(2, len(ordered)))
+    return wet.sort_values("date"), dry.sort_values("date")
+
+
+def composite_info(frame: pd.DataFrame) -> dict:
+    observations = frame[["granule_id", "date", "time_jst", "rain_7d_mm"]].to_dict(
+        orient="records"
+    )
+    return {
+        "count": len(observations),
+        "dates": [item["date"] for item in observations],
+        "rain_7d_mm": [float(item["rain_7d_mm"]) for item in observations],
+        "observations": observations,
+    }
+
+
 def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
     scenes = scene_files(args.input_dir)
     if not scenes:
@@ -175,8 +203,9 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         & (frame["band"] == "outside_0_20")
         & (frame["scene_flag"] == "ok")
     ][["granule_id", "date", "time_jst", "rain_7d_mm"]].drop_duplicates()
-    wet = comparison.sort_values(["rain_7d_mm", "date"], ascending=[False, True]).iloc[0]
-    dry = comparison.sort_values(["rain_7d_mm", "date"], ascending=[True, False]).iloc[0]
+    wet, dry = select_composite_groups(
+        comparison, args.wet_min_rain_mm, args.dry_max_rain_mm
+    )
 
     buffer100 = pond.buffer(100)
     with rasterio.open(first_path) as source:
@@ -193,13 +222,20 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
     grids: dict[str, list] = {}
     changed_fractions: list[dict] = []
     for layer in ("HHHH", "HVHV"):
-        wet_values = arrays[(str(wet.granule_id), layer)][row_slice, col_slice]
-        dry_values = arrays[(str(dry.granule_id), layer)][row_slice, col_slice]
-        valid = crop_mask & np.isfinite(wet_values) & np.isfinite(dry_values) & (wet_values > 0) & (dry_values > 0)
-        wet_db = np.full(wet_values.shape, np.nan, dtype="float64")
-        dry_db = np.full(dry_values.shape, np.nan, dtype="float64")
-        wet_db[valid] = 10 * np.log10(wet_values[valid])
-        dry_db[valid] = 10 * np.log10(dry_values[valid])
+        def make_composite(rows: pd.DataFrame) -> np.ndarray:
+            stack = []
+            for granule_id in rows["granule_id"]:
+                values = arrays[(str(granule_id), layer)][row_slice, col_slice]
+                db = np.full(values.shape, np.nan, dtype="float64")
+                valid = crop_mask & np.isfinite(values) & (values > 0)
+                db[valid] = 10 * np.log10(values[valid])
+                stack.append(db)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=RuntimeWarning)
+                return np.nanmedian(np.stack(stack), axis=0)
+
+        wet_db = make_composite(wet)
+        dry_db = make_composite(dry)
         difference = nanmedian_filter(dry_db, 3) - nanmedian_filter(wet_db, 3)
         difference[~crop_mask] = np.nan
         grids[layer] = [
@@ -250,8 +286,25 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         )
         for layer in ("HHHH", "HVHV")
     }
+    edge_vs_core = {
+        layer: round(
+            float(
+                fraction_lookup[("outside_0_20", layer)]
+                - fraction_lookup[("inside_core", layer)]
+            ),
+            4,
+        )
+        for layer in ("HHHH", "HVHV")
+    }
     if edge_excess["HHHH"] >= 0.10 and edge_excess["HVHV"] >= 0.10:
         assessment = "境界外側に明瞭な変化集中"
+    elif (
+        edge_vs_core["HHHH"] >= 0.10
+        and edge_vs_core["HVHV"] >= 0.10
+        and edge_excess["HHHH"] >= 0.03
+        and edge_excess["HVHV"] >= 0.03
+    ):
+        assessment = "境界周辺に変化集中・外側拡張は弱い"
     elif edge_excess["HHHH"] >= 0.05 or edge_excess["HVHV"] >= 0.05:
         assessment = "弱い境界外変化・偏波間の一致を要確認"
     else:
@@ -261,9 +314,12 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         "crs": str(crs),
         "comparison": {
             "orbit": args.comparison_orbit.lower(),
-            "wet": wet.to_dict(),
-            "dry": dry.to_dict(),
-            "difference": "dry_minus_wet_db",
+            "wet": composite_info(wet),
+            "dry": composite_info(dry),
+            "difference": "dry_composite_minus_wet_composite_db",
+            "temporal_composite": "pixelwise_median",
+            "wet_min_rain_mm": args.wet_min_rain_mm,
+            "dry_max_rain_mm": args.dry_max_rain_mm,
             "spatial_filter": "3x3_median_approximately_30m",
         },
         "band_labels": BAND_LABELS,
@@ -272,7 +328,8 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         "assessment": {
             "label": assessment,
             "outer_0_20_excess_vs_50_100": edge_excess,
-            "note": "変化画素率を外側0–20 mと外側50–100 mで比較した一次判定",
+            "outer_0_20_excess_vs_inside_core": edge_vs_core,
+            "note": "変化画素率を外側0–20 m、池中央、外側50–100 mで比較した一次判定",
         },
         "grid": {"x": xs, "y": ys, "HHHH": grids["HHHH"], "HVHV": grids["HVHV"]},
         "pond_boundary_paths": geometry_paths(pond),
@@ -294,6 +351,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pond-id", default="27")
     parser.add_argument("--id-column", default="simple_id")
     parser.add_argument("--comparison-orbit", choices=["ASCENDING", "DESCENDING"], default="ASCENDING")
+    parser.add_argument("--wet-min-rain-mm", type=float, default=100.0)
+    parser.add_argument("--dry-max-rain-mm", type=float, default=20.0)
     parser.add_argument(
         "--output-csv", type=Path, default=REPO_ROOT / "data" / "derived" / "pond_27_boundary_bands.csv"
     )
@@ -305,4 +364,6 @@ def parse_args() -> argparse.Namespace:
 
 if __name__ == "__main__":
     stats, diagnostic = analyze(parse_args())
-    print(f"{len(stats)}行 / {diagnostic['comparison']['wet']['date']} → {diagnostic['comparison']['dry']['date']}")
+    wet_dates = ",".join(diagnostic["comparison"]["wet"]["dates"])
+    dry_dates = ",".join(diagnostic["comparison"]["dry"]["dates"])
+    print(f"{len(stats)}行 / 多雨 [{wet_dates}] → 少雨 [{dry_dates}]")

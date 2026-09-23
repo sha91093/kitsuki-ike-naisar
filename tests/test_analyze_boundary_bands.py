@@ -2,8 +2,13 @@ import pytest
 from shapely.geometry import box
 
 import numpy as np
+import pandas as pd
 
-from scripts.analyze_boundary_bands import distance_bands, nanmedian_filter
+from scripts.analyze_boundary_bands import (
+    distance_bands,
+    nanmedian_filter,
+    select_composite_groups,
+)
 
 
 def test_distance_bands_are_non_overlapping_and_cover_buffer():
@@ -28,3 +33,17 @@ def test_nanmedian_filter_removes_isolated_speckle():
     filtered = nanmedian_filter(values, 3)
 
     assert filtered[2, 2] == 1
+
+
+def test_select_composite_groups_uses_rain_thresholds():
+    observations = pd.DataFrame(
+        {
+            "date": ["2026-06-28", "2026-07-10", "2026-07-22", "2026-08-15", "2026-08-27"],
+            "rain_7d_mm": [257.0, 109.8, 17.6, 9.2, 2.8],
+        }
+    )
+
+    wet, dry = select_composite_groups(observations, 100.0, 20.0)
+
+    assert list(wet["date"]) == ["2026-06-28", "2026-07-10"]
+    assert list(dry["date"]) == ["2026-07-22", "2026-08-15", "2026-08-27"]
