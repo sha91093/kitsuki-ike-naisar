@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スネコスリ溜池 開放水面試算</title>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/water.css" />
+</head>
+<body>
+  <header class="hero">
+    <nav><a href="pond.html?id=27">← 池別診断</a><a href="qa-27.html">航空画像QA →</a></nav>
+    <span>NISAR / OPEN WATER PROTOTYPE</span>
+    <h1>スネコスリ溜池</h1>
+    <p>昇交・降交の両方で水域となり、中央シードへ4近傍で接続する画素だけを開放水面として試算します。</p>
+  </header>
+  <main>
+    <section id="summary" class="summary-grid"></section>
+    <section class="notice"><strong>試算値です。</strong> 植生下冠水は含めず、片軌道だけの水域候補は判定不能へ分離しています。7月8–9日ペアは軌道間一致率が低いため時系列から除外します。</section>
+    <section class="chart-card"><div class="heading"><span>BUFFER SENSITIVITY</span><h2>解析バッファ別の開放水面積</h2></div><div id="buffer-chart" class="chart"></div></section>
+    <section class="two-column">
+      <div class="chart-card"><div class="heading"><span>THRESHOLD SENSITIVITY</span><h2>閾値方式の比較（50 m）</h2></div><div id="threshold-chart" class="chart small"></div></div>
+      <div class="chart-card"><div class="heading"><span>ORBIT DISAGREEMENT</span><h2>片軌道のみの候補面積</h2></div><div id="uncertain-chart" class="chart small"></div></div>
+    </section>
+    <section class="table-card"><div class="heading"><span>PAIR REVIEW</span><h2>観測ペア別の品質</h2></div><div class="table-scroll"><table><thead><tr><th>代表日</th><th>前7日雨量</th><th>確定水面</th><th>判定不能</th><th>一致率</th><th>判定</th></tr></thead><tbody id="pair-table"></tbody></table></div></section>
+    <p class="footnote">分類: HH・HV Otsu閾値 / 4近傍 / 中央40 m内側シード / 最小2画素。開放水面の精度確定にはSentinel-2等との照合が必要です。</p>
+  </main>
+  <script src="assets/water.js"></script>
+</body>
+</html>
