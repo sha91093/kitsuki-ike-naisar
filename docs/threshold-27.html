@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スネコスリ溜池 NISAR閾値探索</title>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/threshold.css" />
+</head>
+<body>
+  <header class="hero">
+    <nav><a href="sentinel2-27.html">← Sentinel-2検証</a><a href="water-27.html">NISAR開放水面試算 →</a></nav>
+    <span>NISAR / THRESHOLD CALIBRATION</span>
+    <h1>スネコスリ溜池</h1>
+    <p>多雨後と渇水期の光学水域を教師に、昇交・降交別のHH/HV固定閾値を0.25 dB刻みで探索しました。</p>
+  </header>
+  <main>
+    <section id="summary" class="summary-grid"></section>
+    <section class="notice"><strong>判定:</strong> 固定閾値で未使用日の誤差は改善しましたが、8月の減水域は大部分が水面と同じ低後方散乱のままでした。絶対値閾値だけでは渇水変化を十分に分離できません。</section>
+    <section class="chart-card"><div class="heading"><span>AREA COMPARISON</span><h2>光学水域・観測別Otsu・調整済み固定閾値</h2></div><div id="area-chart" class="chart"></div></section>
+    <section class="map-card">
+      <div class="map-heading"><div class="heading"><span>ERROR MAP</span><h2>調整済み分類の位置誤差</h2></div><label>光学日<select id="date-select"></select></label></div>
+      <div class="map-legend"><i class="tp"></i>一致水域 <i class="fp"></i>NISARのみ（水域過大） <i class="fn"></i>光学のみ（水域不足）</div>
+      <div id="error-map" aria-label="NISAR調整済み分類とSentinel-2水域の誤差地図"></div>
+      <p id="map-caption"></p>
+    </section>
+    <section class="table-card"><div class="heading"><span>HELD-OUT REVIEW</span><h2>日付別評価</h2></div><div class="table-scroll"><table><thead><tr><th>光学日</th><th>区分</th><th>光学</th><th>Otsu</th><th>固定閾値</th><th>IoU Otsu</th><th>IoU 固定</th></tr></thead><tbody id="result-table"></tbody></table></div></section>
+    <section class="table-card"><div class="heading"><span>DROUGHT SEPARABILITY</span><h2>8月の後方散乱中央値</h2></div><div class="table-scroll"><table><thead><tr><th>領域</th><th>降交 HH</th><th>降交 HV</th><th>昇交 HH</th><th>昇交 HV</th></tr></thead><tbody id="distribution-table"></tbody></table></div><p class="explain">括弧内は第25–75百分位。恒常水面と光学減水域の分布が大きく重なっており、単純なしきい値分離を難しくしています。</p></section>
+    <p class="footnote">調整日: 2026-06-29・2026-08-23。未使用検証日: 2026-08-13・2026-09-22。両軌道で条件を満たし、中央シードへ4近傍接続する画素を水域としました。</p>
+  </main>
+  <script src="assets/threshold.js"></script>
+</body>
+</html>

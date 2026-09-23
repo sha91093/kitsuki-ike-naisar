@@ -1,0 +1,2 @@
+@import url("sentinel2.css");
+.map-legend{display:flex;flex-wrap:wrap;gap:12px;margin:0 0 10px;font-size:10px;color:var(--muted)}.map-legend i{width:14px;height:10px;border-radius:2px;margin-right:-7px}.tp{background:#1d9b70}.fp{background:#d74b45}.fn{background:#3185c7}#error-map{height:500px;border-radius:9px;overflow:hidden;background:#dce6df}.explain{font-size:10px;color:var(--muted);line-height:1.7;margin:12px 0 0}@media(max-width:760px){#error-map{height:390px}}
