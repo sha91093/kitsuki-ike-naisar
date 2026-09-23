@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スネコスリ溜池 航空画像QA</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/qa.css" />
+</head>
+<body>
+  <main id="qa-map" aria-label="航空画像と変化領域の照合地図"></main>
+  <aside id="qa-panel">
+    <header>
+      <a href="pond.html?id=27">← 池別診断へ</a>
+      <span>NISAR / IMAGERY QA</span>
+      <h1>スネコスリ溜池</h1>
+      <p>現行ポリゴンと、池に接続した6つの変化領域を国土地理院の航空画像に重ねています。</p>
+    </header>
+    <section class="legend">
+      <div><i class="pond-line"></i>現行OSMポリゴン</div>
+      <div><i class="change-fill"></i>HH・HV共通変化</div>
+      <div><i class="negative-fill"></i>負方向を含む変化</div>
+    </section>
+    <section class="notice">航空画像で地物を目視分類済みです。ただし撮影時期はNISAR観測日と異なるため、土地被覆の照合に限定します。元のGeoJSONはまだ変更していません。</section>
+    <section id="component-list"><p>読み込み中…</p></section>
+    <footer>背景画像: 国土地理院 シームレス空中写真</footer>
+  </aside>
+  <script src="assets/qa.js"></script>
+</body>
+</html>

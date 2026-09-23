@@ -3,8 +3,10 @@ from shapely.geometry import box
 
 import numpy as np
 import pandas as pd
+from rasterio.transform import from_origin
 
 from scripts.analyze_boundary_bands import (
+    component_geojson,
     distance_bands,
     connected_to_seed,
     nanmedian_filter,
@@ -62,3 +64,28 @@ def test_connected_to_seed_removes_isolated_component():
     assert sizes == [3]
     assert connected[1, 1:4].all()
     assert not connected[4, 4:6].any()
+
+
+def test_component_geojson_labels_negative_and_mixed_components():
+    components = np.zeros((3, 5), dtype=bool)
+    components[1, 0:2] = True
+    components[1, 3:5] = True
+    positive = np.zeros_like(components)
+    negative = np.zeros_like(components)
+    negative[1, 0:2] = True
+    negative[1, 3] = True
+
+    result = component_geojson(
+        components,
+        positive,
+        negative,
+        from_origin(500000, 3700000, 10, 10),
+        "EPSG:32652",
+    )
+
+    assert [feature["properties"]["sign"] for feature in result["features"]] == [
+        "negative",
+        "mixed",
+    ]
+    assert result["features"][1]["properties"]["negative_share"] == 0.5
+    assert result["features"][0]["geometry"]["type"] == "Polygon"

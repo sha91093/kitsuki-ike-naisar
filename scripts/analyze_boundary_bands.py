@@ -14,7 +14,9 @@ import pandas as pd
 import rasterio
 from rasterio.features import geometry_mask, shapes
 from rasterio.windows import from_bounds
+from pyproj import Transformer
 from shapely.geometry import mapping, shape
+from shapely.ops import transform as transform_geometry
 
 try:
     from scripts.summarize_backscatter import power_statistics, scene_files
@@ -36,6 +38,39 @@ BAND_LABELS = {
     "outside_0_20": "外側0–20 m",
     "outside_20_50": "外側20–50 m",
     "outside_50_100": "外側50–100 m",
+}
+
+POND_27_IMAGERY_REVIEW = {
+    1: {
+        "classification": "open_water",
+        "classification_label": "開放水面",
+        "review_note": "北側の開放水面内。境界補正ではなく、水面粗度または局所的な水面状態の変化候補。",
+    },
+    2: {
+        "classification": "roadside_shore",
+        "classification_label": "道路沿い岸辺",
+        "review_note": "西岸の県道沿いで水際と樹木・法面をまたぐ。境界位置の確認候補。",
+    },
+    3: {
+        "classification": "embankment_shore",
+        "classification_label": "東岸・堤体側",
+        "review_note": "東岸の草地・堤体状地形と水際をまたぐ。負方向変化で、冠水植生消失または乾燥候補。",
+    },
+    4: {
+        "classification": "wooded_shore",
+        "classification_label": "樹木下の岸辺",
+        "review_note": "南側の樹冠に覆われた水際。Lバンドで検出したい対象と整合する。",
+    },
+    5: {
+        "classification": "wooded_shore",
+        "classification_label": "樹木下の岸辺",
+        "review_note": "南東側の樹冠と水際の境界。ポリゴン境界の局所確認候補。",
+    },
+    6: {
+        "classification": "wooded_inlet",
+        "classification_label": "樹木下の細い入江",
+        "review_note": "南西の細い入江と樹冠境界。75%が負方向で、境界形状と植生下冠水の重点確認候補。",
+    },
 }
 
 
@@ -180,6 +215,61 @@ def mask_paths(mask_array: np.ndarray, transform) -> list[list[list[float]]]:
             continue
         paths.extend(geometry_paths(shape(geometry).simplify(2.0, preserve_topology=True)))
     return paths
+
+
+def mask_geometries(mask_array: np.ndarray, transform) -> list[object]:
+    """True画素の8近傍成分をポリゴンとして返す。"""
+    return [
+        shape(geometry)
+        for geometry, value in shapes(
+            mask_array.astype("uint8"),
+            mask=mask_array,
+            transform=transform,
+            connectivity=8,
+        )
+        if value == 1
+    ]
+
+
+def component_geojson(
+    component_mask: np.ndarray,
+    positive_mask: np.ndarray,
+    negative_mask: np.ndarray,
+    transform,
+    crs,
+) -> dict:
+    """航空画像QA用に、変化成分をWGS84 GeoJSONへ変換する。"""
+    transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+    positive = mask_geometries(positive_mask, transform)
+    negative = mask_geometries(negative_mask, transform)
+    features = []
+    for component_id, geometry in enumerate(mask_geometries(component_mask, transform), 1):
+        positive_area = sum(geometry.intersection(item).area for item in positive)
+        negative_area = sum(geometry.intersection(item).area for item in negative)
+        if positive_area >= geometry.area * 0.99:
+            sign = "positive"
+        elif negative_area >= geometry.area * 0.99:
+            sign = "negative"
+        else:
+            sign = "mixed"
+        wgs84 = transform_geometry(transformer.transform, geometry)
+        centroid = wgs84.centroid
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "component_id": component_id,
+                    "area_m2": round(float(geometry.area), 1),
+                    "sign": sign,
+                    "positive_share": round(positive_area / geometry.area, 3),
+                    "negative_share": round(negative_area / geometry.area, 3),
+                    "latitude": round(centroid.y, 7),
+                    "longitude": round(centroid.x, 7),
+                },
+                "geometry": mapping(wgs84),
+            }
+        )
+    return {"type": "FeatureCollection", "features": features}
 
 
 def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
@@ -436,6 +526,21 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         connectivity_assessment = "小規模な境界接続変化を検出"
     else:
         connectivity_assessment = "境界接続変化は未確定"
+    qa_components = component_geojson(
+        connected_both,
+        connected_positive,
+        connected_negative,
+        crop_transform,
+        crs,
+    )
+    if str(args.pond_id) == "27":
+        for feature in qa_components["features"]:
+            component_id = feature["properties"]["component_id"]
+            review = POND_27_IMAGERY_REVIEW.get(component_id)
+            if review:
+                feature["properties"].update(review)
+    wgs84_transformer = Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
+    pond_wgs84 = transform_geometry(wgs84_transformer.transform, pond)
     output = {
         "pond_id": str(args.pond_id),
         "crs": str(crs),
@@ -475,6 +580,13 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
             "connected_positive_paths": mask_paths(connected_positive, crop_transform),
             "connected_negative_paths": mask_paths(connected_negative, crop_transform),
             "connected_mixed_paths": mask_paths(connected_mixed, crop_transform),
+        },
+        "imagery_qa": {
+            "status": "preliminary_reviewed",
+            "source": "GSI seamless aerial imagery",
+            "pond_geometry": mapping(pond_wgs84),
+            "components": qa_components,
+            "note": "航空画像で地物を目視分類済み。撮影時期はNISAR観測日と一致しないため、土地被覆の照合に限定する。元の池ポリゴンは変更していない。",
         },
         "grid": {"x": xs, "y": ys, "HHHH": grids["HHHH"], "HVHV": grids["HVHV"]},
         "pond_boundary_paths": geometry_paths(pond),
