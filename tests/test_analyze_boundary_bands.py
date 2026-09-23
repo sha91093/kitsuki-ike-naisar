@@ -6,6 +6,7 @@ import pandas as pd
 
 from scripts.analyze_boundary_bands import (
     distance_bands,
+    connected_to_seed,
     nanmedian_filter,
     select_composite_groups,
 )
@@ -47,3 +48,17 @@ def test_select_composite_groups_uses_rain_thresholds():
 
     assert list(wet["date"]) == ["2026-06-28", "2026-07-10"]
     assert list(dry["date"]) == ["2026-07-22", "2026-08-15", "2026-08-27"]
+
+
+def test_connected_to_seed_removes_isolated_component():
+    candidate = np.zeros((6, 6), dtype=bool)
+    candidate[1, 1:4] = True
+    candidate[4, 4:6] = True
+    seed = np.zeros_like(candidate)
+    seed[1, 1] = True
+
+    connected, sizes = connected_to_seed(candidate, seed, minimum_pixels=3)
+
+    assert sizes == [3]
+    assert connected[1, 1:4].all()
+    assert not connected[4, 4:6].any()

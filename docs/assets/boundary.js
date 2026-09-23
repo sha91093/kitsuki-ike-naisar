@@ -19,7 +19,8 @@
       <div class="summary-card"><span>比較軌道</span><strong>${orbitLabels[comparison.orbit]}</strong><small>同一軌道のみ</small></div>
       <div class="summary-card"><span>多雨期 ${wet.count}観測</span><strong>${wet.dates.join('・')}</strong><small>前7日 ${wet.rain_7d_mm.map(value => value.toFixed(1)).join(' / ')} mm</small></div>
       <div class="summary-card"><span>少雨期 ${dry.count}観測</span><strong>${dry.dates.join('・')}</strong><small>前7日 ${dry.rain_7d_mm.map(value => value.toFixed(1)).join(' / ')} mm</small></div>
-      <div class="summary-card"><span>一次判定</span><strong>${data.assessment.label}</strong><small>外側0–20 m 対 50–100 m</small></div>`;
+      <div class="summary-card"><span>一次判定</span><strong>${data.assessment.label}</strong><small>外側0–20 m 対 50–100 m</small></div>
+      <div class="summary-card"><span>連結性判定</span><strong>${data.connectivity.assessment}</strong><small>${data.connectivity.component_sizes_pixels.length}成分 / 最大 ${Math.max(0, ...data.connectivity.component_areas_m2)} m²</small></div>`;
 
     const summaries = data.band_summary.filter(
       item => item.orbit_direction === comparison.orbit.toUpperCase()
@@ -47,6 +48,15 @@
       heatmaps.push({ x, y, mode: 'lines', line: { color: '#111', width: 2 }, hoverinfo: 'skip', showlegend: false, xaxis: 'x', yaxis: 'y' });
       heatmaps.push({ x, y, mode: 'lines', line: { color: '#111', width: 2 }, hoverinfo: 'skip', showlegend: false, xaxis: 'x2', yaxis: 'y2' });
     });
+    const addCandidatePaths = (paths, color, width) => paths.forEach(path => {
+      const x = path.map(point => point[0]);
+      const y = path.map(point => point[1]);
+      heatmaps.push({ x, y, mode: 'lines', line: { color, width }, hoverinfo: 'skip', showlegend: false, xaxis: 'x', yaxis: 'y' });
+      heatmaps.push({ x, y, mode: 'lines', line: { color, width }, hoverinfo: 'skip', showlegend: false, xaxis: 'x2', yaxis: 'y2' });
+    });
+    addCandidatePaths(data.connectivity.connected_both_paths, '#14a36f', 3);
+    addCandidatePaths(data.connectivity.connected_positive_paths, '#f08a24', 4);
+    addCandidatePaths(data.connectivity.connected_negative_paths, '#2456c4', 4);
     Plotly.react('boundary-diff-chart', heatmaps, {
       font: { family: 'Noto Sans JP', size: 9 }, margin: { t: 35, r: 15, b: 30, l: 35 },
       paper_bgcolor: '#fff', plot_bgcolor: '#fbfcfb',
@@ -68,6 +78,14 @@
       <td>${((cells(band, 'HVHV', 'changed_fraction_abs_1_5_db') ?? 0) * 100).toFixed(1)}%</td>
       <td>${cells(band, 'HHHH', 'median_change_db')?.toFixed(2) ?? '—'} dB</td>
       <td>${cells(band, 'HVHV', 'median_change_db')?.toFixed(2) ?? '—'} dB</td></tr>`).join('');
+    const connectivity = data.connectivity.metrics;
+    const connectedCell = (band, key) => connectivity.find(item => item.band === band)?.[key] ?? 0;
+    document.getElementById('connectivity-table-body').innerHTML = order.map(band => `
+      <tr><td>${data.band_labels[band]}</td>
+      <td>${(connectedCell(band, 'connected_both_fraction') * 100).toFixed(1)}%</td>
+      <td>${(connectedCell(band, 'connected_positive_fraction') * 100).toFixed(1)}%</td>
+      <td>${(connectedCell(band, 'connected_negative_fraction') * 100).toFixed(1)}%</td>
+      <td>${(connectedCell(band, 'connected_mixed_fraction') * 100).toFixed(1)}%</td></tr>`).join('');
   }
 
   async function loadWhenReady() {

@@ -12,9 +12,9 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 import rasterio
-from rasterio.features import geometry_mask
+from rasterio.features import geometry_mask, shapes
 from rasterio.windows import from_bounds
-from shapely.geometry import mapping
+from shapely.geometry import mapping, shape
 
 try:
     from scripts.summarize_backscatter import power_statistics, scene_files
@@ -125,6 +125,63 @@ def composite_info(frame: pd.DataFrame) -> dict:
     }
 
 
+def connected_to_seed(
+    candidate: np.ndarray,
+    seed: np.ndarray,
+    minimum_pixels: int = 3,
+) -> tuple[np.ndarray, list[int]]:
+    """8近傍成分のうちseedに触れ、最小画素数以上の領域だけを返す。"""
+    if candidate.shape != seed.shape:
+        raise ValueError("candidateとseedの形状が一致しません")
+    height, width = candidate.shape
+    visited = np.zeros(candidate.shape, dtype=bool)
+    connected = np.zeros(candidate.shape, dtype=bool)
+    sizes: list[int] = []
+    for row in range(height):
+        for column in range(width):
+            if not candidate[row, column] or visited[row, column]:
+                continue
+            stack = [(row, column)]
+            visited[row, column] = True
+            component: list[tuple[int, int]] = []
+            touches_seed = False
+            while stack:
+                current_row, current_column = stack.pop()
+                component.append((current_row, current_column))
+                touches_seed = touches_seed or bool(seed[current_row, current_column])
+                for row_offset in (-1, 0, 1):
+                    for column_offset in (-1, 0, 1):
+                        if row_offset == 0 and column_offset == 0:
+                            continue
+                        next_row = current_row + row_offset
+                        next_column = current_column + column_offset
+                        if (
+                            0 <= next_row < height
+                            and 0 <= next_column < width
+                            and candidate[next_row, next_column]
+                            and not visited[next_row, next_column]
+                        ):
+                            visited[next_row, next_column] = True
+                            stack.append((next_row, next_column))
+            if touches_seed and len(component) >= minimum_pixels:
+                sizes.append(len(component))
+                for component_row, component_column in component:
+                    connected[component_row, component_column] = True
+    return connected, sorted(sizes, reverse=True)
+
+
+def mask_paths(mask_array: np.ndarray, transform) -> list[list[list[float]]]:
+    """True画素をポリゴン化し、Plotly描画用の外周座標を返す。"""
+    paths: list[list[list[float]]] = []
+    for geometry, value in shapes(
+        mask_array.astype("uint8"), mask=mask_array, transform=transform, connectivity=8
+    ):
+        if value != 1:
+            continue
+        paths.extend(geometry_paths(shape(geometry).simplify(2.0, preserve_topology=True)))
+    return paths
+
+
 def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
     scenes = scene_files(args.input_dir)
     if not scenes:
@@ -220,6 +277,7 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         all_touched=False,
     )
     grids: dict[str, list] = {}
+    difference_arrays: dict[str, np.ndarray] = {}
     changed_fractions: list[dict] = []
     for layer in ("HHHH", "HVHV"):
         def make_composite(rows: pd.DataFrame) -> np.ndarray:
@@ -238,6 +296,7 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         dry_db = make_composite(dry)
         difference = nanmedian_filter(dry_db, 3) - nanmedian_filter(wet_db, 3)
         difference[~crop_mask] = np.nan
+        difference_arrays[layer] = difference
         grids[layer] = [
             [None if not np.isfinite(value) else round(float(value), 2) for value in row]
             for row in difference
@@ -259,6 +318,64 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
                     "median_change_db": round(float(np.median(vals)), 3) if vals.size else None,
                 }
             )
+
+    hh_difference = difference_arrays["HHHH"]
+    hv_difference = difference_arrays["HVHV"]
+    jointly_valid = np.isfinite(hh_difference) & np.isfinite(hv_difference)
+    threshold = args.change_threshold_db
+    both_changed = jointly_valid & (np.abs(hh_difference) >= threshold) & (
+        np.abs(hv_difference) >= threshold
+    )
+    positive_both = jointly_valid & (hh_difference >= threshold) & (hv_difference >= threshold)
+    negative_both = jointly_valid & (hh_difference <= -threshold) & (hv_difference <= -threshold)
+    seed_mask = geometry_mask(
+        [mapping(pond.buffer(10))],
+        out_shape=crop_mask.shape,
+        transform=crop_transform,
+        invert=True,
+        all_touched=True,
+    )
+    connected_both, component_sizes = connected_to_seed(
+        both_changed, seed_mask, args.minimum_component_pixels
+    )
+    connected_positive, positive_sizes = connected_to_seed(
+        positive_both, seed_mask, args.minimum_component_pixels
+    )
+    connected_negative, negative_sizes = connected_to_seed(
+        negative_both, seed_mask, args.minimum_component_pixels
+    )
+    connected_mixed = connected_both & ~connected_positive & ~connected_negative
+    connected_metrics: list[dict] = []
+    for band, full_mask in band_masks.items():
+        band_mask = full_mask[row_slice, col_slice] & crop_mask
+        pixel_count = int(np.sum(band_mask))
+        connected_metrics.append(
+            {
+                "band": band,
+                "band_label": BAND_LABELS[band],
+                "pixels": pixel_count,
+                "connected_both_fraction": round(
+                    float(np.sum(connected_both & band_mask) / pixel_count), 4
+                )
+                if pixel_count
+                else None,
+                "connected_positive_fraction": round(
+                    float(np.sum(connected_positive & band_mask) / pixel_count), 4
+                )
+                if pixel_count
+                else None,
+                "connected_negative_fraction": round(
+                    float(np.sum(connected_negative & band_mask) / pixel_count), 4
+                )
+                if pixel_count
+                else None,
+                "connected_mixed_fraction": round(
+                    float(np.sum(connected_mixed & band_mask) / pixel_count), 4
+                )
+                if pixel_count
+                else None,
+            }
+        )
 
     height, width = crop_mask.shape
     xs = [round(crop_transform.c + (column + 0.5) * crop_transform.a, 2) for column in range(width)]
@@ -309,6 +426,16 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
         assessment = "弱い境界外変化・偏波間の一致を要確認"
     else:
         assessment = "境界外側への明瞭な変化集中なし"
+    connected_lookup = {item["band"]: item["connected_both_fraction"] for item in connected_metrics}
+    if (
+        connected_lookup["inside_core"] == 0
+        and connected_lookup["outside_50_100"] == 0
+        and connected_lookup["inside_0_20"] > 0
+        and connected_lookup["outside_0_20"] > 0
+    ):
+        connectivity_assessment = "小規模な境界接続変化を検出"
+    else:
+        connectivity_assessment = "境界接続変化は未確定"
     output = {
         "pond_id": str(args.pond_id),
         "crs": str(crs),
@@ -330,6 +457,24 @@ def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
             "outer_0_20_excess_vs_50_100": edge_excess,
             "outer_0_20_excess_vs_inside_core": edge_vs_core,
             "note": "変化画素率を外側0–20 m、池中央、外側50–100 mで比較した一次判定",
+        },
+        "connectivity": {
+            "assessment": connectivity_assessment,
+            "threshold_db": threshold,
+            "minimum_component_pixels": args.minimum_component_pixels,
+            "seed": "pond_polygon_and_10m_outer_buffer",
+            "pixel_area_m2": abs(transform.a * transform.e),
+            "component_sizes_pixels": component_sizes,
+            "component_areas_m2": [
+                round(size * abs(transform.a * transform.e), 1) for size in component_sizes
+            ],
+            "positive_component_sizes_pixels": positive_sizes,
+            "negative_component_sizes_pixels": negative_sizes,
+            "metrics": connected_metrics,
+            "connected_both_paths": mask_paths(connected_both, crop_transform),
+            "connected_positive_paths": mask_paths(connected_positive, crop_transform),
+            "connected_negative_paths": mask_paths(connected_negative, crop_transform),
+            "connected_mixed_paths": mask_paths(connected_mixed, crop_transform),
         },
         "grid": {"x": xs, "y": ys, "HHHH": grids["HHHH"], "HVHV": grids["HVHV"]},
         "pond_boundary_paths": geometry_paths(pond),
@@ -353,6 +498,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--comparison-orbit", choices=["ASCENDING", "DESCENDING"], default="ASCENDING")
     parser.add_argument("--wet-min-rain-mm", type=float, default=100.0)
     parser.add_argument("--dry-max-rain-mm", type=float, default=20.0)
+    parser.add_argument("--change-threshold-db", type=float, default=1.5)
+    parser.add_argument("--minimum-component-pixels", type=int, default=3)
     parser.add_argument(
         "--output-csv", type=Path, default=REPO_ROOT / "data" / "derived" / "pond_27_boundary_bands.csv"
     )
