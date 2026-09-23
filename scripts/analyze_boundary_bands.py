@@ -1,0 +1,308 @@
+"""OSM池境界の内外を距離帯に分け、NISAR時系列と画素差分を診断する。"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import warnings
+from datetime import timedelta
+from pathlib import Path
+
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+import rasterio
+from rasterio.features import geometry_mask
+from rasterio.windows import from_bounds
+from shapely.geometry import mapping
+
+try:
+    from scripts.summarize_backscatter import power_statistics, scene_files
+except ModuleNotFoundError:  # `python scripts/analyze_boundary_bands.py` での実行用
+    from summarize_backscatter import power_statistics, scene_files
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_INPUT = REPO_ROOT / "work" / "nisar_subsets"
+DEFAULT_PONDS = REPO_ROOT / "data" / "static" / "kitsuki_ponds_final.geojson"
+DEFAULT_CATALOG = REPO_ROOT / "data" / "nisar_catalog" / "catalog.csv"
+DEFAULT_SCENES = REPO_ROOT / "data" / "derived" / "nisar_scene_quality.csv"
+DEFAULT_WEATHER = REPO_ROOT / "data" / "weather" / "kitsuki_daily_precipitation.csv"
+
+BAND_LABELS = {
+    "inside_core": "内側40 m以上",
+    "inside_20_40": "内側20–40 m",
+    "inside_0_20": "内側0–20 m",
+    "outside_0_20": "外側0–20 m",
+    "outside_20_50": "外側20–50 m",
+    "outside_50_100": "外側50–100 m",
+}
+
+
+def distance_bands(geometry) -> dict[str, object]:
+    """重複しない内外距離帯を作る。"""
+    inner20 = geometry.buffer(-20)
+    inner40 = geometry.buffer(-40)
+    buffer20 = geometry.buffer(20)
+    buffer50 = geometry.buffer(50)
+    buffer100 = geometry.buffer(100)
+    return {
+        "inside_core": inner40,
+        "inside_20_40": inner20.difference(inner40),
+        "inside_0_20": geometry.difference(inner20),
+        "outside_0_20": buffer20.difference(geometry),
+        "outside_20_50": buffer50.difference(buffer20),
+        "outside_50_100": buffer100.difference(buffer50),
+    }
+
+
+def rainfall_lookup(frame: pd.DataFrame) -> dict[pd.Timestamp, float]:
+    return {
+        pd.Timestamp(row.date).normalize(): float(row.precipitation_mm)
+        for row in frame.itertuples()
+    }
+
+
+def antecedent_rain(lookup: dict[pd.Timestamp, float], day: pd.Timestamp, days: int) -> float:
+    return round(sum(lookup.get(day - timedelta(days=i), 0.0) for i in range(days)), 1)
+
+
+def local_observation(row: pd.Series, rain: dict[pd.Timestamp, float]) -> dict:
+    timestamp = pd.Timestamp(row["begin_time"])
+    local = timestamp.tz_convert("Asia/Tokyo")
+    day = local.tz_localize(None).normalize()
+    return {
+        "granule_id": str(row["granule_id"]),
+        "orbit_direction": str(row["orbit_direction"]),
+        "date": day.strftime("%Y-%m-%d"),
+        "time_jst": local.strftime("%Y-%m-%d %H:%M"),
+        "rain_7d_mm": antecedent_rain(rain, day, 7),
+    }
+
+
+def geometry_paths(geometry) -> list[list[list[float]]]:
+    polygons = list(geometry.geoms) if geometry.geom_type == "MultiPolygon" else [geometry]
+    return [[[round(x, 2), round(y, 2)] for x, y in polygon.exterior.coords] for polygon in polygons]
+
+
+def nanmedian_filter(values: np.ndarray, size: int = 3) -> np.ndarray:
+    """NaNを無視した正方形移動中央値。SAR差分の孤立スペックルを抑える。"""
+    if size < 1 or size % 2 == 0:
+        raise ValueError("sizeは正の奇数にしてください")
+    radius = size // 2
+    padded = np.pad(values, radius, mode="constant", constant_values=np.nan)
+    windows = np.lib.stride_tricks.sliding_window_view(padded, (size, size))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        return np.nanmedian(windows, axis=(-2, -1))
+
+
+def analyze(args: argparse.Namespace) -> tuple[pd.DataFrame, dict]:
+    scenes = scene_files(args.input_dir)
+    if not scenes:
+        raise FileNotFoundError(f"HH/HV観測がありません: {args.input_dir}")
+    catalog = pd.read_csv(args.catalog, dtype=str).fillna("")
+    weather = pd.read_csv(args.weather)
+    rain = rainfall_lookup(weather)
+    scene_quality = pd.read_csv(args.scene_quality)
+    scene_flags = {
+        (str(row.granule_id), str(row.layer)): str(row.scene_quality_flag)
+        for row in scene_quality.itertuples()
+    }
+    metadata = {
+        str(row["granule_id"]): local_observation(row, rain)
+        for _, row in catalog.iterrows()
+        if str(row["granule_id"]) in scenes
+    }
+
+    first_path = next(iter(next(iter(scenes.values())).values()))
+    with rasterio.open(first_path) as source:
+        crs = source.crs
+        transform = source.transform
+        raster_shape = source.shape
+    ponds = gpd.read_file(args.ponds).to_crs(crs)
+    selected = ponds[ponds[args.id_column].astype(str) == str(args.pond_id)]
+    if selected.empty:
+        raise ValueError(f"池ID {args.pond_id} がありません")
+    pond = selected.iloc[0].geometry
+    bands = {key: geom for key, geom in distance_bands(pond).items() if not geom.is_empty}
+    band_masks = {
+        key: geometry_mask(
+            [mapping(geom)], out_shape=raster_shape, transform=transform, invert=True, all_touched=False
+        )
+        for key, geom in bands.items()
+    }
+
+    records: list[dict] = []
+    arrays: dict[tuple[str, str], np.ndarray] = {}
+    for granule_id, layer_paths in sorted(scenes.items()):
+        if granule_id not in metadata:
+            continue
+        for layer, path in sorted(layer_paths.items()):
+            with rasterio.open(path) as source:
+                values = source.read(1).astype("float64")
+            arrays[(granule_id, layer)] = values
+            for band, mask_array in band_masks.items():
+                sample = values[mask_array]
+                stats = power_statistics(sample)
+                record = {
+                    "pond_id": str(args.pond_id),
+                    **metadata[granule_id],
+                    "layer": layer,
+                    "band": band,
+                    "band_label": BAND_LABELS[band],
+                    "scene_flag": scene_flags.get((granule_id, layer), "ok"),
+                    "band_area_m2": float(bands[band].area),
+                }
+                record.update(stats)
+                records.append(record)
+
+    frame = pd.DataFrame(records).sort_values(
+        ["orbit_direction", "date", "band", "layer"]
+    )
+    frame["baseline_median_db"] = frame.groupby(
+        ["orbit_direction", "layer", "band"]
+    )["median_db"].transform(
+        lambda values: float(np.nanmedian(values))
+    )
+    frame["delta_from_baseline_db"] = frame["median_db"] - frame["baseline_median_db"]
+    args.output_csv.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(args.output_csv, index=False, float_format="%.6f")
+
+    comparison = frame[
+        (frame["orbit_direction"] == args.comparison_orbit)
+        & (frame["layer"] == "HHHH")
+        & (frame["band"] == "outside_0_20")
+        & (frame["scene_flag"] == "ok")
+    ][["granule_id", "date", "time_jst", "rain_7d_mm"]].drop_duplicates()
+    wet = comparison.sort_values(["rain_7d_mm", "date"], ascending=[False, True]).iloc[0]
+    dry = comparison.sort_values(["rain_7d_mm", "date"], ascending=[True, False]).iloc[0]
+
+    buffer100 = pond.buffer(100)
+    with rasterio.open(first_path) as source:
+        window = from_bounds(*buffer100.bounds, transform=source.transform).round_offsets().round_lengths()
+        row_slice, col_slice = window.toslices()
+        crop_transform = source.window_transform(window)
+    crop_mask = geometry_mask(
+        [mapping(buffer100)],
+        out_shape=(row_slice.stop - row_slice.start, col_slice.stop - col_slice.start),
+        transform=crop_transform,
+        invert=True,
+        all_touched=False,
+    )
+    grids: dict[str, list] = {}
+    changed_fractions: list[dict] = []
+    for layer in ("HHHH", "HVHV"):
+        wet_values = arrays[(str(wet.granule_id), layer)][row_slice, col_slice]
+        dry_values = arrays[(str(dry.granule_id), layer)][row_slice, col_slice]
+        valid = crop_mask & np.isfinite(wet_values) & np.isfinite(dry_values) & (wet_values > 0) & (dry_values > 0)
+        wet_db = np.full(wet_values.shape, np.nan, dtype="float64")
+        dry_db = np.full(dry_values.shape, np.nan, dtype="float64")
+        wet_db[valid] = 10 * np.log10(wet_values[valid])
+        dry_db[valid] = 10 * np.log10(dry_values[valid])
+        difference = nanmedian_filter(dry_db, 3) - nanmedian_filter(wet_db, 3)
+        difference[~crop_mask] = np.nan
+        grids[layer] = [
+            [None if not np.isfinite(value) else round(float(value), 2) for value in row]
+            for row in difference
+        ]
+        full_difference = np.full(raster_shape, np.nan, dtype="float64")
+        full_difference[row_slice, col_slice] = difference
+        for band, mask_array in band_masks.items():
+            vals = full_difference[mask_array]
+            vals = vals[np.isfinite(vals)]
+            changed_fractions.append(
+                {
+                    "layer": layer,
+                    "band": band,
+                    "band_label": BAND_LABELS[band],
+                    "pixels": int(vals.size),
+                    "changed_fraction_abs_1_5_db": round(float(np.mean(np.abs(vals) >= 1.5)), 4)
+                    if vals.size
+                    else None,
+                    "median_change_db": round(float(np.median(vals)), 3) if vals.size else None,
+                }
+            )
+
+    height, width = crop_mask.shape
+    xs = [round(crop_transform.c + (column + 0.5) * crop_transform.a, 2) for column in range(width)]
+    ys = [round(crop_transform.f + (row + 0.5) * crop_transform.e, 2) for row in range(height)]
+    summary = (
+        frame.groupby(["orbit_direction", "layer", "band", "band_label"], as_index=False)
+        .agg(
+            median_min_db=("median_db", "min"),
+            median_max_db=("median_db", "max"),
+            observation_count=("date", "nunique"),
+        )
+    )
+    summary["median_range_db"] = summary["median_max_db"] - summary["median_min_db"]
+    fraction_lookup = {
+        (item["band"], item["layer"]): item["changed_fraction_abs_1_5_db"]
+        for item in changed_fractions
+    }
+    edge_excess = {
+        layer: round(
+            float(
+                fraction_lookup[("outside_0_20", layer)]
+                - fraction_lookup[("outside_50_100", layer)]
+            ),
+            4,
+        )
+        for layer in ("HHHH", "HVHV")
+    }
+    if edge_excess["HHHH"] >= 0.10 and edge_excess["HVHV"] >= 0.10:
+        assessment = "境界外側に明瞭な変化集中"
+    elif edge_excess["HHHH"] >= 0.05 or edge_excess["HVHV"] >= 0.05:
+        assessment = "弱い境界外変化・偏波間の一致を要確認"
+    else:
+        assessment = "境界外側への明瞭な変化集中なし"
+    output = {
+        "pond_id": str(args.pond_id),
+        "crs": str(crs),
+        "comparison": {
+            "orbit": args.comparison_orbit.lower(),
+            "wet": wet.to_dict(),
+            "dry": dry.to_dict(),
+            "difference": "dry_minus_wet_db",
+            "spatial_filter": "3x3_median_approximately_30m",
+        },
+        "band_labels": BAND_LABELS,
+        "band_summary": json.loads(summary.to_json(orient="records")),
+        "changed_fractions": changed_fractions,
+        "assessment": {
+            "label": assessment,
+            "outer_0_20_excess_vs_50_100": edge_excess,
+            "note": "変化画素率を外側0–20 mと外側50–100 mで比較した一次判定",
+        },
+        "grid": {"x": xs, "y": ys, "HHHH": grids["HHHH"], "HVHV": grids["HVHV"]},
+        "pond_boundary_paths": geometry_paths(pond),
+    }
+    args.output_json.parent.mkdir(parents=True, exist_ok=True)
+    args.output_json.write_text(
+        json.dumps(output, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+    return frame, output
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="池境界の内外距離帯をNISARで診断する")
+    parser.add_argument("--input-dir", type=Path, default=DEFAULT_INPUT)
+    parser.add_argument("--ponds", type=Path, default=DEFAULT_PONDS)
+    parser.add_argument("--catalog", type=Path, default=DEFAULT_CATALOG)
+    parser.add_argument("--scene-quality", type=Path, default=DEFAULT_SCENES)
+    parser.add_argument("--weather", type=Path, default=DEFAULT_WEATHER)
+    parser.add_argument("--pond-id", default="27")
+    parser.add_argument("--id-column", default="simple_id")
+    parser.add_argument("--comparison-orbit", choices=["ASCENDING", "DESCENDING"], default="ASCENDING")
+    parser.add_argument(
+        "--output-csv", type=Path, default=REPO_ROOT / "data" / "derived" / "pond_27_boundary_bands.csv"
+    )
+    parser.add_argument(
+        "--output-json", type=Path, default=REPO_ROOT / "docs" / "data" / "boundary_27.json"
+    )
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    stats, diagnostic = analyze(parse_args())
+    print(f"{len(stats)}行 / {diagnostic['comparison']['wet']['date']} → {diagnostic['comparison']['dry']['date']}")

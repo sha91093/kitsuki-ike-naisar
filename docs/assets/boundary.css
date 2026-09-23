@@ -1,0 +1,29 @@
+.boundary-section {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 2px solid #cbd9d1;
+}
+.section-heading span {
+  font-size: 9px;
+  letter-spacing: .14em;
+  color: var(--forest);
+  font-weight: 700;
+}
+.section-heading h2 { font-size: 20px; margin-top: 4px; }
+.section-heading p {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-top: 5px;
+}
+.boundary-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 14px 0;
+}
+.boundary-summary .summary-card strong { font-size: 14px; }
+.boundary-map-card { margin-top: 14px; }
+@media (max-width: 800px) {
+  .boundary-summary { grid-template-columns: repeat(2, 1fr); }
+}

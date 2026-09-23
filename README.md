@@ -134,6 +134,19 @@ python scripts/build_dashboard_data.py
 
 候補判定は分類条件を検討するための診断機能であり、水面積の確定値ではありません。
 
+### OSM境界の内外診断
+
+スネコスリ溜池を対象に、OSM境界の内外100 mを6つの距離帯へ分け、多雨時と少雨時の同一軌道画素差分を作成できます。
+
+```bash
+python scripts/analyze_boundary_bands.py \
+  --input-dir work/nisar_subsets \
+  --pond-id 27 \
+  --comparison-orbit ASCENDING
+```
+
+単一画素のスペックルを抑えるため、差分図には3×3画素（約30 m）の移動中央値を使用します。OSM境界は正解水際ではなく、内外変化を測る基準線として扱います。
+
 ## GitHub Actions
 
 「NISARデータ利用可能性チェック」を手動実行できます。リポジトリのSecretsへ以下を登録してください。
