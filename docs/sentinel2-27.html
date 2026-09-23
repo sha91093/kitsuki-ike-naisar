@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スネコスリ溜池 Sentinel-2光学検証</title>
+  <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/sentinel2.css" />
+</head>
+<body>
+  <header class="hero">
+    <nav><a href="water-27.html">← NISAR開放水面試算</a><a href="qa-27.html">航空画像QA →</a></nav>
+    <span>NISAR × SENTINEL-2 VALIDATION</span>
+    <h1>スネコスリ溜池</h1>
+    <p>雲・雲影を除いたSentinel-2 L2Aから光学水域を抽出し、NISARの昇交・降交一致面積と照合します。</p>
+  </header>
+  <main>
+    <section id="summary" class="summary-grid"></section>
+    <section class="notice"><strong>結果:</strong> 多雨後の6月は両者がほぼ一致しましたが、渇水期の8月23–26日はSentinel-2が1.28 ha、NISARが2.83 haでした。現在のNISAR分類は減水した岸辺を水面として残している可能性があります。</section>
+    <section class="chart-card"><div class="heading"><span>TIME SERIES</span><h2>光学水域とNISAR開放水面</h2></div><div id="comparison-chart" class="chart"></div></section>
+    <section class="map-card">
+      <div class="map-heading"><div class="heading"><span>OPTICAL WATER MAP</span><h2>Sentinel-2水域形状</h2></div><label>晴天日<select id="date-select"></select></label></div>
+      <div id="optical-map" aria-label="Sentinel-2水域と現行池ポリゴンの地図"></div>
+      <p id="map-caption"></p>
+    </section>
+    <section class="table-card"><div class="heading"><span>PAIR REVIEW</span><h2>NISAR観測との最近傍比較</h2></div><div class="table-scroll"><table><thead><tr><th>NISAR代表日</th><th>光学日</th><th>日差</th><th>NISAR</th><th>Sentinel-2</th><th>差</th><th>判定</th></tr></thead><tbody id="comparison-table"></tbody></table></div></section>
+    <p class="footnote">光学分類: SCLで雲・雲影等を除外 / NDWI &gt; 0 かつ MNDWI &gt; 0 / 中央40 m内側シード / 4近傍 / 20 mバッファ。局所有効画素率95%未満は除外。</p>
+  </main>
+  <script src="assets/sentinel2.js"></script>
+</body>
+</html>
