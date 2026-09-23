@@ -28,6 +28,7 @@ on:
         default: 'HHHH,HVHV'
         type: choice
         options:
+          - HHHH,HVHV,mask,numberOfLooks
           - HHHH,HVHV
           - HHHH
           - HVHV
