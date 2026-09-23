@@ -2,6 +2,8 @@ import numpy as np
 
 from scripts.tune_nisar_thresholds import (
     classification_metrics,
+    classify_temporal_orbit,
+    nanmedian_filter,
     region_statistics,
     select_joint_thresholds,
     threshold_values,
@@ -51,3 +53,27 @@ def test_region_statistics_ignores_nan_and_outside_values():
     region = np.array([[True, True], [True, False]])
     stats = region_statistics(values, region)
     assert stats == {"pixels": 2, "p25_db": 1.25, "median_db": 1.5, "p75_db": 1.75}
+
+
+def test_temporal_classifier_removes_large_backscatter_increase():
+    orbit = {
+        "hh": np.array([[-15.0, -15.0]]),
+        "hv": np.array([[-20.0, -20.0]]),
+        "valid": np.ones((1, 2), dtype=bool),
+        "delta_hh": np.array([[0.5, 3.0]]),
+        "delta_hv": np.array([[0.2, 2.0]]),
+        "delta_valid": np.ones((1, 2), dtype=bool),
+    }
+    result = classify_temporal_orbit(
+        orbit,
+        {"hh_threshold_db": -10.0, "hv_threshold_db": -15.0},
+        {"delta_hh_max_db": 1.0, "delta_hv_max_db": 1.0},
+    )
+    assert result.tolist() == [[True, False]]
+
+
+def test_nanmedian_filter_removes_single_pixel_spike():
+    values = np.ones((3, 3), dtype=float)
+    values[1, 1] = 99
+    result = nanmedian_filter(values, 3)
+    assert result[1, 1] == 1

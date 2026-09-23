@@ -16,21 +16,21 @@
     <nav><a href="sentinel2-27.html">← Sentinel-2検証</a><a href="water-27.html">NISAR開放水面試算 →</a></nav>
     <span>NISAR / THRESHOLD CALIBRATION</span>
     <h1>スネコスリ溜池</h1>
-    <p>多雨後と渇水期の光学水域を教師に、昇交・降交別のHH/HV固定閾値を0.25 dB刻みで探索しました。</p>
+    <p>昇交・降交別のHH/HV固定閾値と、多雨期からのΔHH・ΔHV条件を0.25 dB刻みで探索しました。</p>
   </header>
   <main>
     <section id="summary" class="summary-grid"></section>
-    <section class="notice"><strong>判定:</strong> 固定閾値で未使用日の誤差は改善しましたが、8月の減水域は大部分が水面と同じ低後方散乱のままでした。絶対値閾値だけでは渇水変化を十分に分離できません。</section>
-    <section class="chart-card"><div class="heading"><span>AREA COMPARISON</span><h2>光学水域・観測別Otsu・調整済み固定閾値</h2></div><div id="area-chart" class="chart"></div></section>
+    <section class="notice"><strong>判定:</strong> 3×3中央値による時間差条件は8月23日の減水を捉えましたが、未使用日では大幅な過小推定となりました。単一の多雨期を基準にした画素差分は過学習しており、現時点では採用できません。</section>
+    <section class="chart-card"><div class="heading"><span>AREA COMPARISON</span><h2>光学水域・Otsu・固定閾値・時間差条件</h2></div><div id="area-chart" class="chart"></div></section>
     <section class="map-card">
-      <div class="map-heading"><div class="heading"><span>ERROR MAP</span><h2>調整済み分類の位置誤差</h2></div><label>光学日<select id="date-select"></select></label></div>
+      <div class="map-heading"><div class="heading"><span>ERROR MAP</span><h2>時間差条件の位置誤差</h2></div><label>光学日<select id="date-select"></select></label></div>
       <div class="map-legend"><i class="tp"></i>一致水域 <i class="fp"></i>NISARのみ（水域過大） <i class="fn"></i>光学のみ（水域不足）</div>
-      <div id="error-map" aria-label="NISAR調整済み分類とSentinel-2水域の誤差地図"></div>
+      <div id="error-map" aria-label="NISAR時間差分類とSentinel-2水域の誤差地図"></div>
       <p id="map-caption"></p>
     </section>
-    <section class="table-card"><div class="heading"><span>HELD-OUT REVIEW</span><h2>日付別評価</h2></div><div class="table-scroll"><table><thead><tr><th>光学日</th><th>区分</th><th>光学</th><th>Otsu</th><th>固定閾値</th><th>IoU Otsu</th><th>IoU 固定</th></tr></thead><tbody id="result-table"></tbody></table></div></section>
+    <section class="table-card"><div class="heading"><span>HELD-OUT REVIEW</span><h2>日付別評価</h2></div><div class="table-scroll"><table><thead><tr><th>光学日</th><th>区分</th><th>光学</th><th>Otsu</th><th>固定</th><th>時間差</th><th>IoU Otsu</th><th>IoU 固定</th><th>IoU 時間差</th></tr></thead><tbody id="result-table"></tbody></table></div></section>
     <section class="table-card"><div class="heading"><span>DROUGHT SEPARABILITY</span><h2>8月の後方散乱中央値</h2></div><div class="table-scroll"><table><thead><tr><th>領域</th><th>降交 HH</th><th>降交 HV</th><th>昇交 HH</th><th>昇交 HV</th></tr></thead><tbody id="distribution-table"></tbody></table></div><p class="explain">括弧内は第25–75百分位。恒常水面と光学減水域の分布が大きく重なっており、単純なしきい値分離を難しくしています。</p></section>
-    <p class="footnote">調整日: 2026-06-29・2026-08-23。未使用検証日: 2026-08-13・2026-09-22。両軌道で条件を満たし、中央シードへ4近傍接続する画素を水域としました。</p>
+    <p class="footnote">時間差は多雨期2026-06-29相当のNISARを基準に、3×3画素中央値から算出。調整日: 6月29日・8月23日。未使用検証日: 8月13日・9月22日。</p>
   </main>
   <script src="assets/threshold.js"></script>
 </body>

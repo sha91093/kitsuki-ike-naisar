@@ -16,18 +16,23 @@ async function init() {
   const validation = data.results.filter(row => row.split === 'validation');
   const oldValidation = validation.filter(row => row.method === 'per_scene_otsu');
   const tunedValidation = validation.filter(row => row.method === 'tuned_fixed');
+  const temporalValidation = validation.filter(row => row.method === 'temporal_change');
   const oldIou = average(oldValidation.map(row => row.iou));
   const tunedIou = average(tunedValidation.map(row => row.iou));
   const oldMae = average(oldValidation.map(row => Math.abs(row.area_error_m2)));
   const tunedMae = average(tunedValidation.map(row => Math.abs(row.area_error_m2)));
-  const drought = data.results.find(row => row.optical_date === '2026-08-23' && row.method === 'tuned_fixed');
+  const temporalIou = average(temporalValidation.map(row => row.iou));
+  const temporalMae = average(temporalValidation.map(row => Math.abs(row.area_error_m2)));
+  const drought = data.results.find(row => row.optical_date === '2026-08-23' && row.method === 'temporal_change');
   const d = data.selected_thresholds.descending;
   const a = data.selected_thresholds.ascending;
+  const dt = data.selected_temporal_thresholds.descending;
+  const at = data.selected_temporal_thresholds.ascending;
   document.getElementById('summary').innerHTML = `
-    <div class="summary-card"><span>降交の固定閾値</span><strong>${d.hh_threshold_db} / ${d.hv_threshold_db}</strong><small>HH / HV (dB)</small></div>
-    <div class="summary-card"><span>昇交の固定閾値</span><strong>${a.hh_threshold_db} / ${a.hv_threshold_db}</strong><small>HH / HV (dB)</small></div>
-    <div class="summary-card"><span>未使用日 平均IoU</span><strong>${oldIou.toFixed(3)} → ${tunedIou.toFixed(3)}</strong><small>+${((tunedIou - oldIou) * 100).toFixed(1)}ポイント</small></div>
-    <div class="summary-card"><span>8月に残る面積誤差</span><strong>+${area(drought.area_error_m2)}</strong><small>固定閾値でも過大</small></div>`;
+    <div class="summary-card"><span>固定閾値 D / A</span><strong>${d.hh_threshold_db}, ${d.hv_threshold_db}</strong><small>昇交 ${a.hh_threshold_db}, ${a.hv_threshold_db} dB</small></div>
+    <div class="summary-card"><span>時間差上限 D / A</span><strong>${dt.delta_hh_max_db}, ${dt.delta_hv_max_db}</strong><small>昇交 ${at.delta_hh_max_db}, ${at.delta_hv_max_db} dB</small></div>
+    <div class="summary-card"><span>未使用日 平均IoU</span><strong>${tunedIou.toFixed(3)} → ${temporalIou.toFixed(3)}</strong><small>固定閾値 → 時間差</small></div>
+    <div class="summary-card"><span>8/23 時間差面積</span><strong>${area(drought.water_area_m2)}</strong><small>光学 ${area(drought.optical_area_m2)}</small></div>`;
 
   const dates = [...new Set(data.results.map(row => row.optical_date))];
   const optical = dates.map(date => data.results.find(row => row.optical_date === date).optical_area_m2);
@@ -36,6 +41,7 @@ async function init() {
     { x: dates, y: optical, type: 'scatter', mode: 'lines+markers', name: 'Sentinel-2', line: { color: '#087ca2', width: 3 } },
     { x: dates, y: methodValues('per_scene_otsu'), type: 'scatter', mode: 'lines+markers', name: '観測別Otsu', line: { color: '#d98c22', dash: 'dot', width: 2 } },
     { x: dates, y: methodValues('tuned_fixed'), type: 'scatter', mode: 'lines+markers', name: '調整済み固定閾値', line: { color: '#237563', dash: 'dash', width: 3 } }
+    ,{ x: dates, y: methodValues('temporal_change'), type: 'scatter', mode: 'lines+markers', name: '3×3時間差', line: { color: '#7e57a5', width: 3 } }
   ], { ...layoutBase, yaxis: { title: '開放水面積 (m²)', rangemode: 'tozero', gridcolor: '#e6ece8' }, xaxis: { title: 'Sentinel-2観測日', gridcolor: '#edf1ee' } }, { responsive: true, displayModeBar: false });
 
   const map = L.map('error-map');
@@ -56,7 +62,7 @@ async function init() {
     Object.entries(styles).forEach(([key, style]) => {
       if (feature[key]) errorLayers.push(L.geoJSON(feature[key], { style: { ...style, weight: 1.5 } }).addTo(map));
     });
-    const row = data.results.find(item => item.optical_date === date && item.method === 'tuned_fixed');
+    const row = data.results.find(item => item.optical_date === date && item.method === 'temporal_change');
     document.getElementById('map-caption').textContent = `${date}（${row.split === 'calibration' ? '調整日' : '未使用検証日'}） IoU ${row.iou.toFixed(3)} / NISAR ${area(row.water_area_m2)} / 光学 ${area(row.optical_area_m2)}`;
   }
   const selector = document.getElementById('date-select');
@@ -67,7 +73,8 @@ async function init() {
   document.getElementById('result-table').innerHTML = dates.map(date => {
     const old = data.results.find(row => row.optical_date === date && row.method === 'per_scene_otsu');
     const tuned = data.results.find(row => row.optical_date === date && row.method === 'tuned_fixed');
-    return `<tr><td>${date}</td><td>${tuned.split === 'calibration' ? '調整' : '未使用検証'}</td><td>${area(tuned.optical_area_m2)}</td><td>${area(old.water_area_m2)}</td><td>${area(tuned.water_area_m2)}</td><td>${old.iou.toFixed(3)}</td><td>${tuned.iou.toFixed(3)}</td></tr>`;
+    const temporal = data.results.find(row => row.optical_date === date && row.method === 'temporal_change');
+    return `<tr><td>${date}</td><td>${tuned.split === 'calibration' ? '調整' : '未使用検証'}</td><td>${area(tuned.optical_area_m2)}</td><td>${area(old.water_area_m2)}</td><td>${area(tuned.water_area_m2)}</td><td>${area(temporal.water_area_m2)}</td><td>${old.iou.toFixed(3)}</td><td>${tuned.iou.toFixed(3)}</td><td>${temporal.iou.toFixed(3)}</td></tr>`;
   }).join('');
 
   const distributions = data.drought_feature_distributions;
