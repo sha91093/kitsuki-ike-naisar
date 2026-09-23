@@ -109,6 +109,7 @@ def build_gdalwarp_command(
     output_path: Path,
     cutline_path: Path,
     cookie_file: Path,
+    predictor: str = "3",
 ) -> list[str]:
     return [
         "gdalwarp",
@@ -122,7 +123,7 @@ def build_gdalwarp_command(
         "-wo", "NUM_THREADS=ALL_CPUS",
         "-co", "TILED=YES",
         "-co", "COMPRESS=DEFLATE",
-        "-co", "PREDICTOR=3",
+        "-co", f"PREDICTOR={predictor}",
         "-co", "BIGTIFF=IF_SAFER",
         "--config", "CPL_VSIL_CURL_CHUNK_SIZE", "2097152",
         "--config", "CPL_VSIL_CURL_CACHE_SIZE", "67108864",
@@ -201,7 +202,14 @@ def run(args: argparse.Namespace) -> list[dict]:
             for layer in layers:
                 output_path = output_path_for(row, layer, args.output_dir)
                 source = dataset_source(row["download_url"], layer, version)
-                command = build_gdalwarp_command(source, output_path, cutline_path, cookie_file)
+                predictor = "2" if layer == "mask" else "3"
+                command = build_gdalwarp_command(
+                    source,
+                    output_path,
+                    cutline_path,
+                    cookie_file,
+                    predictor=predictor,
+                )
 
                 record = {
                     "granule_id": row["granule_id"],

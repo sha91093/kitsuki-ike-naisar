@@ -43,3 +43,16 @@ def test_gdalwarp_command_contains_remote_and_cutline_options():
     assert "pond_buffers.geojson" in command
     assert "GDAL_HTTP_NETRC" in command
     assert "COMPRESS=DEFLATE" in command
+    assert "PREDICTOR=3" in command
+
+
+def test_gdalwarp_command_accepts_integer_predictor():
+    command = build_gdalwarp_command(
+        'HDF5:"/vsicurl/https://example.test/a.h5"://science/x/mask',
+        Path("mask.tif"),
+        Path("pond_buffers.geojson"),
+        Path("cookies.txt"),
+        predictor="2",
+    )
+
+    assert "PREDICTOR=2" in command
