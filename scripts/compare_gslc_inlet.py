@@ -12,7 +12,7 @@ import numpy as np
 import rasterio
 from rasterio.features import geometry_mask
 from scipy.ndimage import generic_filter
-from shapely.geometry import box
+from shapely.geometry import box, shape
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,12 +34,25 @@ def local_median(values):
     return np.nanmedian(values) if np.isfinite(values).any() else np.nan
 
 
-def masks(shape, transform, crs, pond):
+def zone_geometries(pond, crs):
     projected = gpd.GeoSeries([pond, ROI], crs=4326).to_crs(crs)
     pond_m, roi_m = projected.iloc[0], projected.iloc[1]
-    zones = {"inlet": pond_m.intersection(roi_m), "core": pond_m.buffer(-40)}
+    buffer_20, buffer_50 = pond_m.buffer(20), pond_m.buffer(50)
+    return {
+        "inlet": roi_m.intersection(pond_m),  # Original OSM-restricted analysis.
+        "outside_0_20m": roi_m.intersection(buffer_20.difference(pond_m)),
+        "outside_20_50m": roi_m.intersection(buffer_50.difference(buffer_20)),
+        "outside_beyond_50m": roi_m.difference(buffer_50),
+        "roi_all": roi_m,
+        "roi_within_20m": roi_m.intersection(buffer_20),
+        "roi_within_50m": roi_m.intersection(buffer_50),
+        "core": pond_m.buffer(-40),
+    }
+
+
+def masks(shape, transform, crs, pond):
     return {key: geometry_mask([geo], out_shape=shape, transform=transform, invert=True)
-            for key, geo in zones.items()}
+            for key, geo in zone_geometries(pond, crs).items()}
 
 
 def path_for_gcov(directory: Path, date: str, polarization: str):
@@ -103,6 +116,29 @@ def plot_change(data, pond, output, early_date):
     plt.close(fig)
 
 
+def plot_zone_map(data, pond, output):
+    fig, axes = plt.subplots(1, 3, figsize=(14, 5), layout="constrained")
+    for ax, day in zip(axes, (UTC_DATES[0], UTC_DATES[1], UTC_DATES[-1])):
+        scene = data[("GSLC", day, "HH")]
+        arr, transform, crs = scene["display"], scene["transform"], scene["crs"]
+        bounds = rasterio.transform.array_bounds(*arr.shape, transform)
+        im = ax.imshow(arr, extent=(bounds[0], bounds[2], bounds[1], bounds[3]),
+                       cmap="viridis_r", vmin=-16, vmax=-3, origin="upper")
+        zones = zone_geometries(pond, crs)
+        outline(ax, zones["roi_all"], "#ff3344", 2)
+        outline(ax, zones["inlet"], "white", 2)
+        outline(ax, zones["roi_within_20m"], "#00f5d4", 1.5)
+        outline(ax, zones["roi_within_50m"], "#ffb703", 1.5)
+        region = zones["roi_all"].buffer(15).bounds
+        ax.set_xlim(region[0], region[2]); ax.set_ylim(region[1], region[3])
+        ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
+        ax.set_title(f"GSLC HH / {day} UTC")
+    fig.colorbar(im, ax=axes, shrink=.7, label="GSLC HH dB")
+    fig.suptitle("SW inlet | red: approximate ROI, white: OSM, cyan: +20m, orange: +50m")
+    fig.savefig(output / "gslc_expanded_zones.png", dpi=190)
+    plt.close(fig)
+
+
 def compare(args):
     output = args.output
     output.mkdir(parents=True, exist_ok=True)
@@ -133,6 +169,7 @@ def compare(args):
     plot_maps(data, pond, output)
     for early_date in (UTC_DATES[0], UTC_DATES[1]):
         plot_change(data, pond, output, early_date)
+    plot_zone_map(data, pond, output)
     changes = []
     for early_date in (UTC_DATES[0], UTC_DATES[1]):
         for product in ("GSLC", "GCOV"):
@@ -148,13 +185,32 @@ def compare(args):
                                         median_pixel_change_db=float(np.nanmedian(delta)),
                                         brightened_3db_fraction=float(np.mean(delta > 3)),
                                         darkened_3db_fraction=float(np.mean(delta < -3))))
+    zones = zone_geometries(pond, data[("GSLC", UTC_DATES[0], "HH")]["crs"])
+    zone_areas = {name: round(geometry.area, 1) for name, geometry in zones.items()}
+    optical = json.loads((ROOT / "docs/data/sentinel2_27.json").read_text())
+    optical_reference = []
+    for observation in optical["observations"]:
+        if (observation["buffer_m"] != 20 or observation["quality_flag"] != "ok"
+                or not observation.get("water_geometry")):
+            continue
+        if observation["observation_date"] not in ("2026-06-29", "2026-07-14", "2026-08-23"):
+            continue
+        water = gpd.GeoSeries([shape(observation["water_geometry"])], crs=4326).to_crs(
+            data[("GSLC", UTC_DATES[0], "HH")]["crs"]).iloc[0]
+        optical_reference.append({"date": observation["observation_date"],
+                                  "note": "Existing NDWI/MNDWI mask; not manually verified water",
+                                  "zone_water_area_m2": {
+                                      name: round(water.intersection(geometry).area, 1)
+                                      for name, geometry in zones.items()}})
     result = {"notes": [
         "UTC dates correspond to Jun 28, Jul 22, Aug 15, and Aug 27 in Japan for ascending passes.",
         "The SW inlet ROI is an approximate box inferred from a user map circle, not surveyed photo geometry.",
         "GSLC is beta0 single-look complex power; GCOV is terrain-flattened gamma0. Absolute dB levels are not interchangeable.",
         "GSLC display uses a 3x3 median solely for visualization and change summaries; raw medians are also recorded.",
-        "Backscatter changes alone do not prove water to land transitions."
-    ], "roi_wgs84": ROI.bounds, "records": records, "changes": changes}
+        "Backscatter changes alone do not prove water to land transitions.",
+        "Areas outside OSM are candidate analysis zones, not confirmed pond extent."
+    ], "roi_wgs84": ROI.bounds, "zone_geometry_area_m2": zone_areas,
+        "optical_reference": optical_reference, "records": records, "changes": changes}
     (output / "metrics.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(changes, indent=2))
 
