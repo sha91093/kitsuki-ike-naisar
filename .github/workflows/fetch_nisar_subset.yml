@@ -3,8 +3,16 @@ name: NISAR HH・HV部分取得
 on:
   workflow_dispatch:
     inputs:
+      product:
+        description: '取得するプロダクト'
+        required: true
+        default: 'GCOV'
+        type: choice
+        options:
+          - GCOV
+          - GSLC
       date:
-        description: '観測日（YYYY-MM-DD、空欄なら最初の未指定観測）'
+        description: 'GCOVは観測日1つ。GSLCはUTC観測日をカンマ区切りで指定'
         required: false
         default: ''
         type: string
@@ -62,7 +70,8 @@ jobs:
           test -n "$EARTHDATA_USERNAME" || { echo 'EARTHDATA_USERNAME secret がありません'; exit 1; }
           test -n "$EARTHDATA_PASSWORD" || { echo 'EARTHDATA_PASSWORD secret がありません'; exit 1; }
 
-      - name: HH・HVを池周辺だけ切り出す
+      - name: GCOV HH・HVを池周辺だけ切り出す
+        if: ${{ inputs.product == 'GCOV' }}
         env:
           EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
           EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
@@ -77,9 +86,22 @@ jobs:
           python scripts/fetch_nisar.py "${ARGS[@]}"
 
       - name: 池・岸辺・中央部の後方散乱を集計
+        if: ${{ inputs.product == 'GCOV' }}
         run: python scripts/summarize_backscatter.py
 
-      - name: 切り出し結果をArtifactへ保存
+      - name: GSLC HH・HVをスネコスリ池周辺だけ切り出す
+        if: ${{ inputs.product == 'GSLC' }}
+        env:
+          EARTHDATA_USERNAME: ${{ secrets.EARTHDATA_USERNAME }}
+          EARTHDATA_PASSWORD: ${{ secrets.EARTHDATA_PASSWORD }}
+          INPUT_DATES: ${{ inputs.date }}
+          INPUT_ORBIT: ${{ inputs.orbit }}
+        run: |
+          test -n "$INPUT_DATES" || { echo 'GSLC requires UTC acquisition dates'; exit 1; }
+          python scripts/fetch_gslc_inlet.py --dates "$INPUT_DATES" --orbit "${INPUT_ORBIT:-ASCENDING}"
+
+      - name: GCOV切り出し結果をArtifactへ保存
+        if: ${{ inputs.product == 'GCOV' }}
         uses: actions/upload-artifact@v4
         with:
           name: nisar-subset-${{ github.run_id }}
@@ -89,5 +111,14 @@ jobs:
             data/derived/nisar_backscatter_variability.csv
             data/derived/nisar_scene_quality.csv
             data/derived/nisar_backscatter_timeseries.metadata.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: GSLC切り出し結果をArtifactへ保存
+        if: ${{ inputs.product == 'GSLC' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gslc-inlet-${{ github.run_id }}
+          path: work/gslc_inlet/
           if-no-files-found: error
           retention-days: 7
